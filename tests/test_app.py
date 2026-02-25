@@ -18,6 +18,7 @@ class EventManagementAppTests(unittest.TestCase):
         app.config["SECRET_KEY"] = "test-secret"
         app.config["ADMIN_USERNAME"] = "admin"
         app.config["ADMIN_PASSWORD"] = "admin123"
+        app.config["API_KEY"] = "test-api-key"
         app.config["RATE_LIMIT_WINDOW_SECONDS"] = 60
         app.config["RATE_LIMIT_LOGIN_MAX_REQUESTS"] = 10
         app.config["RATE_LIMIT_BOOKING_MAX_REQUESTS"] = 30
@@ -102,6 +103,10 @@ class EventManagementAppTests(unittest.TestCase):
             ).fetchone()
         self.assertIsNotNone(row)
         return row
+
+    def _api_headers(self, override_key=None):
+        key = app.config["API_KEY"] if override_key is None else override_key
+        return {"X-API-Key": key}
 
     def test_post_without_csrf_token_rejected(self):
         self._logout_admin()
@@ -549,7 +554,7 @@ class EventManagementAppTests(unittest.TestCase):
             follow_redirects=True,
         )
 
-        response = self.client.get("/api/events")
+        response = self.client.get("/api/events", headers=self._api_headers())
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertIn("items", payload)
@@ -568,7 +573,10 @@ class EventManagementAppTests(unittest.TestCase):
         self._create_event(name="AI Summit", date="2026-10-01", location="San Francisco", capacity="10")
         self._create_event(name="Music Fest", date="2026-12-01", location="Austin", capacity="10")
 
-        response = self.client.get("/api/events?q=Summit&date_from=2026-09-01&date_to=2026-10-31")
+        response = self.client.get(
+            "/api/events?q=Summit&date_from=2026-09-01&date_to=2026-10-31",
+            headers=self._api_headers(),
+        )
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(len(payload["items"]), 1)
@@ -583,7 +591,7 @@ class EventManagementAppTests(unittest.TestCase):
                 capacity="20",
             )
 
-        response = self.client.get("/api/events?page=2&per_page=10")
+        response = self.client.get("/api/events?page=2&per_page=10", headers=self._api_headers())
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["page"], 2)
@@ -600,7 +608,7 @@ class EventManagementAppTests(unittest.TestCase):
             follow_redirects=True,
         )
 
-        response = self.client.get("/api/events?q=API%20Sold%20Out")
+        response = self.client.get("/api/events?q=API%20Sold%20Out", headers=self._api_headers())
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(len(payload["items"]), 1)
@@ -608,8 +616,34 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["remaining_tickets"], 0)
 
     def test_api_events_invalid_date_filter_returns_400(self):
-        response = self.client.get("/api/events?date_from=31-12-2026")
+        response = self.client.get(
+            "/api/events?date_from=31-12-2026",
+            headers=self._api_headers(),
+        )
         self.assertEqual(response.status_code, 400)
+
+    def test_api_requires_key(self):
+        response = self.client.get("/api/events")
+        self.assertEqual(response.status_code, 401)
+
+    def test_api_rejects_invalid_key(self):
+        response = self.client.get("/api/events", headers=self._api_headers(override_key="bad-key"))
+        self.assertEqual(response.status_code, 401)
+
+    def test_api_v1_events_works_with_key(self):
+        self._create_event(name="Versioned API Event", date="2026-11-15", location="SF", capacity="3")
+        response = self.client.get("/api/v1/events", headers=self._api_headers())
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("items", payload)
+        self.assertGreaterEqual(len(payload["items"]), 1)
+
+    def test_api_v1_health_works_with_key(self):
+        response = self.client.get("/api/v1/health", headers=self._api_headers())
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["version"], "v1")
 
     def test_booking_validation_name_too_long(self):
         event_id = self._create_event()
@@ -1069,6 +1103,19 @@ class EventManagementAppTests(unittest.TestCase):
             os.environ,
             {
                 "RATE_LIMIT_WINDOW_SECONDS": "0",
+                "ADMIN_USERNAME": "admin",
+                "ADMIN_PASSWORD": "admin123",
+            },
+            clear=False,
+        ):
+            with self.assertRaises(RuntimeError):
+                load_runtime_config()
+
+    def test_load_runtime_config_rejects_empty_api_key(self):
+        with patch.dict(
+            os.environ,
+            {
+                "API_KEY": "",
                 "ADMIN_USERNAME": "admin",
                 "ADMIN_PASSWORD": "admin123",
             },

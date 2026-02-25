@@ -70,7 +70,26 @@ export RATE_LIMIT_BOOKING_MAX_REQUESTS=30
 
 ## Events API
 
-Public endpoint:
+Set an API key:
+
+```bash
+export API_KEY='replace-with-your-api-key'
+```
+
+All `/api/*` endpoints require header:
+
+```text
+X-API-Key: <your-api-key>
+```
+
+Endpoints:
+
+```text
+GET /api/v1/events
+GET /api/v1/health
+```
+
+Backward-compatible alias:
 
 ```text
 GET /api/events

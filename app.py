@@ -56,6 +56,7 @@ def load_runtime_config():
     secret_key = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
     admin_username = os.getenv("ADMIN_USERNAME", "admin").strip()
     admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+    api_key = os.getenv("API_KEY", "dev-api-key-change-me")
     database = _resolve_database_path(os.getenv("DATABASE", "events.db"))
     rate_limit_window_seconds = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
     rate_limit_login_max_requests = int(os.getenv("RATE_LIMIT_LOGIN_MAX_REQUESTS", "10"))
@@ -66,6 +67,9 @@ def load_runtime_config():
 
     if is_production and secret_key == DEFAULT_SECRET_KEY:
         raise RuntimeError("SECRET_KEY must be changed in production.")
+
+    if not api_key:
+        raise RuntimeError("API_KEY must be set.")
 
     if rate_limit_window_seconds <= 0:
         raise RuntimeError("RATE_LIMIT_WINDOW_SECONDS must be > 0.")
@@ -78,6 +82,7 @@ def load_runtime_config():
         "DATABASE": database,
         "ADMIN_USERNAME": admin_username,
         "ADMIN_PASSWORD": admin_password,
+        "API_KEY": api_key,
         "IS_PRODUCTION": is_production,
         "RATE_LIMIT_WINDOW_SECONDS": rate_limit_window_seconds,
         "RATE_LIMIT_LOGIN_MAX_REQUESTS": rate_limit_login_max_requests,
@@ -455,6 +460,12 @@ def _get_client_ip():
     return request.remote_addr or "unknown"
 
 
+def _api_key_is_valid():
+    expected_key = app.config["API_KEY"]
+    received_key = request.headers.get("X-API-Key", "")
+    return secrets.compare_digest(received_key.encode("utf-8"), expected_key.encode("utf-8"))
+
+
 def reset_rate_limit_state():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -480,33 +491,35 @@ def _check_rate_limit(scope):
     cutoff = now - (window_seconds * 10)
 
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("BEGIN IMMEDIATE")
-    cursor.execute(
-        "DELETE FROM request_rate_limit WHERE scope = ? AND client_ip = ? AND bucket_start < ?",
-        (scope, client_ip, cutoff),
-    )
-    cursor.execute(
-        """
-        INSERT INTO request_rate_limit (scope, client_ip, bucket_start, request_count)
-        VALUES (?, ?, ?, 1)
-        ON CONFLICT(scope, client_ip, bucket_start)
-        DO UPDATE SET request_count = request_count + 1
-        """,
-        (scope, client_ip, bucket_start),
-    )
-    cursor.execute(
-        """
-        SELECT request_count
-        FROM request_rate_limit
-        WHERE scope = ? AND client_ip = ? AND bucket_start = ?
-        """,
-        (scope, client_ip, bucket_start),
-    )
-    request_count = cursor.fetchone()[0]
-    conn.commit()
-    conn.close()
-    return request_count <= max_requests
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute(
+            "DELETE FROM request_rate_limit WHERE scope = ? AND client_ip = ? AND bucket_start < ?",
+            (scope, client_ip, cutoff),
+        )
+        cursor.execute(
+            """
+            INSERT INTO request_rate_limit (scope, client_ip, bucket_start, request_count)
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT(scope, client_ip, bucket_start)
+            DO UPDATE SET request_count = request_count + 1
+            """,
+            (scope, client_ip, bucket_start),
+        )
+        cursor.execute(
+            """
+            SELECT request_count
+            FROM request_rate_limit
+            WHERE scope = ? AND client_ip = ? AND bucket_start = ?
+            """,
+            (scope, client_ip, bucket_start),
+        )
+        request_count = cursor.fetchone()[0]
+        conn.commit()
+        return request_count <= max_requests
+    finally:
+        conn.close()
 
 
 def _generate_csrf_token():
@@ -546,6 +559,15 @@ def enforce_rate_limits():
     if request.endpoint == "book_event":
         if not _check_rate_limit("booking"):
             abort(429, description="Too many booking attempts. Please try again later.")
+
+
+@app.before_request
+def enforce_api_key_auth():
+    if not request.path.startswith("/api/"):
+        return
+
+    if not _api_key_is_valid():
+        abort(401, description="Invalid or missing API key.")
 
 
 @app.after_request
@@ -667,8 +689,7 @@ def home():
     return render_template("index.html", event_data=event_data)
 
 
-@app.route("/api/events")
-def api_events():
+def _events_api_response():
     filters = _parse_events_api_filters()
     page = filters["page"]
     per_page = filters["per_page"]
@@ -729,6 +750,17 @@ def api_events():
             "total_pages": total_pages,
         }
     )
+
+
+@app.route("/api/events")
+@app.route("/api/v1/events")
+def api_events():
+    return _events_api_response()
+
+
+@app.route("/api/v1/health")
+def api_health_v1():
+    return jsonify({"status": "ok", "version": "v1"})
 
 
 # Add Event
