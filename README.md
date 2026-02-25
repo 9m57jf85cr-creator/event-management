@@ -17,6 +17,21 @@ flask --app app run --debug
 
 Open: `http://127.0.0.1:5000`
 
+## Configure Admin Credentials (.env)
+
+Create a `.env` file in the repo root:
+
+```bash
+cd /Users/sonamchosket/Desktop/event-management
+cat > .env << 'EOF'
+ADMIN_USERNAME=sonam
+ADMIN_PASSWORD=MyStrongPass123!
+SECRET_KEY=change-this-to-a-random-long-value
+EOF
+```
+
+Restart the app after changing `.env`.
+
 ## Alternative Run Command
 
 ```bash
