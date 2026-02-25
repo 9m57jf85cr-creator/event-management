@@ -1,6 +1,6 @@
 # Event Management (Flask)
 
-Simple event management app with event creation, deletion, and booking.
+Simple event management app with event creation, capacity management, deletion, and booking.
 
 ## Project Layout
 

@@ -10,6 +10,7 @@
         <input type="text" name="name" value="{{ event.name }}" required>
         <input type="date" name="date" value="{{ event.date }}" required>
         <input type="text" name="location" value="{{ event.location }}" required>
+        <input type="number" name="capacity" value="{{ event.capacity }}" min="1" max="5000" required>
         <button type="submit">Save Changes</button>
     </form>
 </div>

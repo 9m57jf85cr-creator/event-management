@@ -13,6 +13,7 @@
             <input type="text" name="name" placeholder="Event Name" required>
             <input type="date" name="date" required>
             <input type="text" name="location" placeholder="Location" required>
+            <input type="number" name="capacity" placeholder="Capacity" min="1" max="5000" required>
             <button type="submit">Add Event</button>
         </form>
     </div>
@@ -24,9 +25,15 @@
         <h3>{{ event.name }}</h3>
         <p><strong>Date:</strong> {{ event.date }}</p>
         <p><strong>Location:</strong> {{ event.location }}</p>
+        <p><strong>Capacity:</strong> {{ event.capacity }}</p>
         <p class="muted">Total Tickets Booked: {{ event.total_tickets }}</p>
+        <p class="muted">Remaining Tickets: {{ event.remaining_tickets }}</p>
         <div class="actions">
-            <a href="{{ url_for('book_event', event_id=event.id) }}">Book</a>
+            {% if event.remaining_tickets > 0 %}
+                <a href="{{ url_for('book_event', event_id=event.id) }}">Book</a>
+            {% else %}
+                <span class="muted">Sold Out</span>
+            {% endif %}
             {% if session.get('is_admin') %}
                 <a href="{{ url_for('edit_event', event_id=event.id) }}">Edit</a>
                 <form action="{{ url_for('delete_event', id=event.id) }}" method="POST" class="inline-form" style="display:inline;">

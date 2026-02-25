@@ -14,6 +14,7 @@ MAX_EVENT_NAME_LENGTH = 120
 MAX_LOCATION_LENGTH = 120
 MAX_BOOKING_NAME_LENGTH = 80
 MAX_TICKETS = 100
+MAX_EVENT_CAPACITY = 5000
 
 
 def _load_dotenv(path=".env"):
@@ -117,37 +118,70 @@ def _ensure_bookings_created_at(cursor):
         )
 
 
-def _parse_event_form():
+def _ensure_events_capacity(cursor):
+    cursor.execute("PRAGMA table_info(events)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "capacity" not in columns:
+        cursor.execute(
+            f"ALTER TABLE events ADD COLUMN capacity INTEGER NOT NULL DEFAULT {MAX_TICKETS}"
+        )
+    cursor.execute(
+        f"UPDATE events SET capacity = {MAX_TICKETS} WHERE capacity IS NULL OR capacity <= 0"
+    )
+
+
+def _parse_event_form(default_capacity=None):
     name = request.form.get("name", "").strip()
     date = request.form.get("date", "").strip()
     location = request.form.get("location", "").strip()
-    return name, date, location
+    capacity_raw = request.form.get("capacity")
+    if capacity_raw is None:
+        if default_capacity is not None:
+            capacity_raw = str(default_capacity)
+        else:
+            capacity_raw = str(MAX_TICKETS)
+    capacity = capacity_raw.strip()
+    return name, date, location, capacity
 
 
-def _validate_event_fields(name, date, location):
+def _validate_event_fields(name, date, location, capacity_raw):
     if not name or not date or not location:
         flash("Event name, date, and location are required.", "error")
-        return False
+        return False, None
 
     if len(name) > MAX_EVENT_NAME_LENGTH:
         flash(f"Event name cannot exceed {MAX_EVENT_NAME_LENGTH} characters.", "error")
-        return False
+        return False, None
 
     if len(location) > MAX_LOCATION_LENGTH:
         flash(f"Location cannot exceed {MAX_LOCATION_LENGTH} characters.", "error")
-        return False
+        return False, None
 
     if any(ord(ch) < 32 for ch in name + location):
         flash("Event fields contain invalid characters.", "error")
-        return False
+        return False, None
+
+    try:
+        capacity = int(capacity_raw)
+    except ValueError:
+        flash("Capacity must be a positive integer.", "error")
+        return False, None
+
+    if capacity <= 0:
+        flash("Capacity must be a positive integer.", "error")
+        return False, None
+
+    if capacity > MAX_EVENT_CAPACITY:
+        flash(f"Capacity cannot exceed {MAX_EVENT_CAPACITY}.", "error")
+        return False, None
 
     try:
         datetime.strptime(date, "%Y-%m-%d")
     except ValueError:
         flash("Date must be in YYYY-MM-DD format.", "error")
-        return False
+        return False, None
 
-    return True
+    return True, capacity
 
 
 def _parse_booking_sort():
@@ -244,7 +278,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             date TEXT NOT NULL,
-            location TEXT NOT NULL
+            location TEXT NOT NULL,
+            capacity INTEGER NOT NULL DEFAULT 100
         )
     """)
 
@@ -261,6 +296,7 @@ def init_db():
 
     _migrate_bookings_table(cursor)
     _ensure_bookings_created_at(cursor)
+    _ensure_events_capacity(cursor)
     conn.commit()
     conn.close()
 
@@ -307,10 +343,10 @@ def home():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT e.id, e.name, e.date, e.location, COALESCE(SUM(b.tickets), 0) AS total_tickets
+        SELECT e.id, e.name, e.date, e.location, e.capacity, COALESCE(SUM(b.tickets), 0) AS total_tickets
         FROM events e
         LEFT JOIN bookings b ON e.id = b.event_id
-        GROUP BY e.id, e.name, e.date, e.location
+        GROUP BY e.id, e.name, e.date, e.location, e.capacity
         ORDER BY e.date, e.id
     """)
     event_rows = cursor.fetchall()
@@ -321,7 +357,9 @@ def home():
             "name": row[1],
             "date": row[2],
             "location": row[3],
-            "total_tickets": row[4],
+            "capacity": row[4],
+            "total_tickets": row[5],
+            "remaining_tickets": max(row[4] - row[5], 0),
         }
         for row in event_rows
     ]
@@ -332,14 +370,17 @@ def home():
 @app.route("/add_event", methods=["POST"])
 @admin_required
 def add_event():
-    name, date, location = _parse_event_form()
-    if not _validate_event_fields(name, date, location):
+    name, date, location, capacity_raw = _parse_event_form()
+    valid, capacity = _validate_event_fields(name, date, location, capacity_raw)
+    if not valid:
         return redirect(url_for("home"))
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO events (name, date, location) VALUES (?, ?, ?)",
-                   (name, date, location))
+    cursor.execute(
+        "INSERT INTO events (name, date, location, capacity) VALUES (?, ?, ?, ?)",
+        (name, date, location, capacity),
+    )
     conn.commit()
     conn.close()
 
@@ -371,25 +412,32 @@ def delete_event(id):
 def edit_event(event_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, date, location FROM events WHERE id = ?", (event_id,))
+    cursor.execute("SELECT id, name, date, location, capacity FROM events WHERE id = ?", (event_id,))
     row = cursor.fetchone()
     if row is None:
         conn.close()
         flash("Event not found.", "error")
         return redirect(url_for("home"))
 
-    event = {"id": row[0], "name": row[1], "date": row[2], "location": row[3]}
+    event = {"id": row[0], "name": row[1], "date": row[2], "location": row[3], "capacity": row[4]}
 
     if request.method == "POST":
-        name, date, location = _parse_event_form()
-        if not _validate_event_fields(name, date, location):
-            event = {"id": event_id, "name": name, "date": date, "location": location}
+        name, date, location, capacity_raw = _parse_event_form(default_capacity=event["capacity"])
+        valid, capacity = _validate_event_fields(name, date, location, capacity_raw)
+        if not valid:
+            event = {
+                "id": event_id,
+                "name": name,
+                "date": date,
+                "location": location,
+                "capacity": capacity_raw,
+            }
             conn.close()
             return render_template("edit_event.html", event=event)
 
         cursor.execute(
-            "UPDATE events SET name = ?, date = ?, location = ? WHERE id = ?",
-            (name, date, location, event_id),
+            "UPDATE events SET name = ?, date = ?, location = ?, capacity = ? WHERE id = ?",
+            (name, date, location, capacity, event_id),
         )
         conn.commit()
         conn.close()
@@ -405,7 +453,16 @@ def edit_event(event_id):
 def book_event(event_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name FROM events WHERE id = ?", (event_id,))
+    cursor.execute(
+        """
+        SELECT e.id, e.name, e.capacity, COALESCE(SUM(b.tickets), 0) AS total_tickets
+        FROM events e
+        LEFT JOIN bookings b ON e.id = b.event_id
+        WHERE e.id = ?
+        GROUP BY e.id, e.name, e.capacity
+        """,
+        (event_id,),
+    )
     event = cursor.fetchone()
     conn.close()
     if event is None:
@@ -442,15 +499,58 @@ def book_event(event_id):
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO bookings (event_id, user_name, tickets) VALUES (?, ?, ?)",
-                       (event_id, name, tickets))
+        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute(
+            """
+            SELECT e.capacity, COALESCE(SUM(b.tickets), 0) AS total_tickets
+            FROM events e
+            LEFT JOIN bookings b ON e.id = b.event_id
+            WHERE e.id = ?
+            GROUP BY e.id, e.capacity
+            """,
+            (event_id,),
+        )
+        capacity_row = cursor.fetchone()
+        if capacity_row is None:
+            conn.rollback()
+            conn.close()
+            flash("Event not found.", "error")
+            return redirect(url_for("home"))
+
+        remaining_tickets = max(capacity_row[0] - capacity_row[1], 0)
+        if remaining_tickets <= 0:
+            conn.rollback()
+            conn.close()
+            flash("This event is sold out.", "error")
+            return redirect(url_for("book_event", event_id=event_id))
+
+        if tickets > remaining_tickets:
+            conn.rollback()
+            conn.close()
+            flash(f"Only {remaining_tickets} tickets left for this event.", "error")
+            return redirect(url_for("book_event", event_id=event_id))
+
+        cursor.execute(
+            "INSERT INTO bookings (event_id, user_name, tickets) VALUES (?, ?, ?)",
+            (event_id, name, tickets),
+        )
         conn.commit()
         conn.close()
 
         flash("Booking successful.", "success")
         return redirect(url_for("home"))
 
-    return render_template("book.html", event={"id": event[0], "name": event[1]})
+    remaining_tickets = max(event[2] - event[3], 0)
+    return render_template(
+        "book.html",
+        event={
+            "id": event[0],
+            "name": event[1],
+            "capacity": event[2],
+            "total_tickets": event[3],
+            "remaining_tickets": remaining_tickets,
+        },
+    )
 
 
 @app.route("/bookings")

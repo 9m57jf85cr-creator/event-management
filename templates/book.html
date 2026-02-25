@@ -5,12 +5,18 @@
 {% block content %}
 <div class="card" style="max-width: 620px;">
     <h2>Book Event: {{ event.name }}</h2>
+    <p><strong>Capacity:</strong> {{ event.capacity }}</p>
+    <p><strong>Remaining Tickets:</strong> {{ event.remaining_tickets }}</p>
 
+    {% if event.remaining_tickets > 0 %}
     <form action="{{ url_for('book_event', event_id=event.id) }}" method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="name" placeholder="Your Name" required style="margin-bottom: 10px;">
-        <input type="number" name="tickets" placeholder="Number of Tickets" min="1" required style="margin-bottom: 10px;">
+        <input type="number" name="tickets" placeholder="Number of Tickets" min="1" max="{{ event.remaining_tickets }}" required style="margin-bottom: 10px;">
         <button type="submit">Confirm Booking</button>
     </form>
+    {% else %}
+    <p class="flash-error">This event is sold out.</p>
+    {% endif %}
 </div>
 {% endblock %}

@@ -59,10 +59,10 @@ class EventManagementAppTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-    def _create_event(self, name="Tech Meetup", date="2026-03-01", location="Austin"):
+    def _create_event(self, name="Tech Meetup", date="2026-03-01", location="Austin", capacity="100"):
         response = self._post_with_csrf(
             "/add_event",
-            {"name": name, "date": date, "location": location},
+            {"name": name, "date": date, "location": location, "capacity": capacity},
             get_path="/",
             follow_redirects=True,
         )
@@ -97,7 +97,7 @@ class EventManagementAppTests(unittest.TestCase):
     def test_add_event_success(self):
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Hack Night", "date": "2026-03-02", "location": "Seattle"},
+            {"name": "Hack Night", "date": "2026-03-02", "location": "Seattle", "capacity": "100"},
             get_path="/",
             follow_redirects=True,
         )
@@ -114,7 +114,7 @@ class EventManagementAppTests(unittest.TestCase):
         self._logout_admin()
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Blocked", "date": "2026-03-02", "location": "Seattle"},
+            {"name": "Blocked", "date": "2026-03-02", "location": "Seattle", "capacity": "100"},
             get_path="/login",
             follow_redirects=True,
         )
@@ -174,7 +174,7 @@ class EventManagementAppTests(unittest.TestCase):
     def test_add_event_validation_error(self):
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "", "date": "2026-03-02", "location": "Seattle"},
+            {"name": "", "date": "2026-03-02", "location": "Seattle", "capacity": "100"},
             get_path="/",
             follow_redirects=True,
         )
@@ -185,7 +185,7 @@ class EventManagementAppTests(unittest.TestCase):
     def test_add_event_name_too_long(self):
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "A" * 121, "date": "2026-03-02", "location": "Seattle"},
+            {"name": "A" * 121, "date": "2026-03-02", "location": "Seattle", "capacity": "100"},
             get_path="/",
             follow_redirects=True,
         )
@@ -195,7 +195,7 @@ class EventManagementAppTests(unittest.TestCase):
     def test_add_event_invalid_control_characters(self):
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Hack\x01Night", "date": "2026-03-02", "location": "Seattle"},
+            {"name": "Hack\x01Night", "date": "2026-03-02", "location": "Seattle", "capacity": "100"},
             get_path="/",
             follow_redirects=True,
         )
@@ -205,7 +205,7 @@ class EventManagementAppTests(unittest.TestCase):
     def test_add_event_valid_date_format(self):
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Format Pass", "date": "2026-12-31", "location": "Denver"},
+            {"name": "Format Pass", "date": "2026-12-31", "location": "Denver", "capacity": "100"},
             get_path="/",
             follow_redirects=True,
         )
@@ -216,7 +216,7 @@ class EventManagementAppTests(unittest.TestCase):
     def test_add_event_invalid_date_format(self):
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Format Fail", "date": "31-12-2026", "location": "Denver"},
+            {"name": "Format Fail", "date": "31-12-2026", "location": "Denver", "capacity": "100"},
             get_path="/",
             follow_redirects=True,
         )
@@ -255,11 +255,11 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 405)
 
     def test_edit_event_success(self):
-        event_id = self._create_event(name="Old Name", date="2026-04-01", location="LA")
+        event_id = self._create_event(name="Old Name", date="2026-04-01", location="LA", capacity="120")
 
         response = self._post_with_csrf(
             f"/edit_event/{event_id}",
-            {"name": "New Name", "date": "2026-04-20", "location": "SF"},
+            {"name": "New Name", "date": "2026-04-20", "location": "SF", "capacity": "150"},
             get_path=f"/edit_event/{event_id}",
             follow_redirects=True,
         )
@@ -269,18 +269,18 @@ class EventManagementAppTests(unittest.TestCase):
 
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(
-                "SELECT name, date, location FROM events WHERE id = ?",
+                "SELECT name, date, location, capacity FROM events WHERE id = ?",
                 (event_id,),
             ).fetchone()
 
-        self.assertEqual(row, ("New Name", "2026-04-20", "SF"))
+        self.assertEqual(row, ("New Name", "2026-04-20", "SF", 150))
 
     def test_edit_event_invalid_date(self):
         event_id = self._create_event(name="Old Name", date="2026-04-01", location="LA")
 
         response = self._post_with_csrf(
             f"/edit_event/{event_id}",
-            {"name": "New Name", "date": "20-04-2026", "location": "SF"},
+            {"name": "New Name", "date": "20-04-2026", "location": "SF", "capacity": "100"},
             get_path=f"/edit_event/{event_id}",
             follow_redirects=True,
         )
@@ -338,6 +338,56 @@ class EventManagementAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Tickets cannot exceed 100.", response.data)
+
+    def test_booking_rejected_when_tickets_exceed_remaining_capacity(self):
+        event_id = self._create_event(capacity="2")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "First", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Second", "tickets": "2"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Only 1 tickets left for this event.", response.data)
+
+    def test_booking_rejected_when_event_sold_out(self):
+        event_id = self._create_event(capacity="1")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "First", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Second", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"This event is sold out.", response.data)
+
+    def test_home_page_shows_sold_out_state(self):
+        event_id = self._create_event(name="Sold Out Event", capacity="1")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "OnlyUser", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Remaining Tickets: 0", response.data)
+        self.assertIn(b"Sold Out", response.data)
 
     def test_booking_validation_name_too_long(self):
         event_id = self._create_event()
