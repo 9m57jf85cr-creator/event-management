@@ -1,4 +1,4 @@
-VENV_PY := ../.venv/bin/python
+VENV_PY := .venv/bin/python
 PYTHON ?= $(if $(wildcard $(VENV_PY)),$(VENV_PY),python3)
 
 .PHONY: run test lint
