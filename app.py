@@ -227,6 +227,22 @@ def _credentials_match(username, password):
     )
 
 
+def _is_valid_booking_name(name):
+    if not name:
+        flash("Your name is required.", "error")
+        return False
+
+    if len(name) > MAX_BOOKING_NAME_LENGTH:
+        flash(f"Name cannot exceed {MAX_BOOKING_NAME_LENGTH} characters.", "error")
+        return False
+
+    if any(ord(ch) < 32 for ch in name):
+        flash("Name contains invalid characters.", "error")
+        return False
+
+    return True
+
+
 def _generate_csrf_token():
     token = session.get("_csrf_token")
     if not token:
@@ -473,16 +489,7 @@ def book_event(event_id):
         name = request.form.get("name", "").strip()
         tickets_raw = request.form.get("tickets", "").strip()
 
-        if not name:
-            flash("Your name is required.", "error")
-            return redirect(url_for("book_event", event_id=event_id))
-
-        if len(name) > MAX_BOOKING_NAME_LENGTH:
-            flash(f"Name cannot exceed {MAX_BOOKING_NAME_LENGTH} characters.", "error")
-            return redirect(url_for("book_event", event_id=event_id))
-
-        if any(ord(ch) < 32 for ch in name):
-            flash("Name contains invalid characters.", "error")
+        if not _is_valid_booking_name(name):
             return redirect(url_for("book_event", event_id=event_id))
 
         try:
@@ -551,6 +558,75 @@ def book_event(event_id):
             "remaining_tickets": remaining_tickets,
         },
     )
+
+
+@app.route("/my_bookings")
+def my_bookings():
+    user_name = request.args.get("name", "").strip()
+    booking_data = []
+    has_search = bool(user_name)
+
+    if has_search:
+        if _is_valid_booking_name(user_name):
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT b.id, e.name, b.user_name, b.tickets, b.created_at
+                FROM bookings b
+                JOIN events e ON e.id = b.event_id
+                WHERE LOWER(b.user_name) = LOWER(?)
+                ORDER BY b.created_at DESC, b.id DESC
+                """,
+                (user_name,),
+            )
+            rows = cursor.fetchall()
+            conn.close()
+            booking_data = [
+                {
+                    "id": row[0],
+                    "event_name": row[1],
+                    "user_name": row[2],
+                    "tickets": row[3],
+                    "created_at": row[4],
+                }
+                for row in rows
+            ]
+        else:
+            has_search = False
+            user_name = ""
+
+    return render_template(
+        "my_bookings.html",
+        booking_data=booking_data,
+        user_name=user_name,
+        has_search=has_search,
+    )
+
+
+@app.route("/my_bookings/cancel/<int:booking_id>", methods=["POST"])
+def cancel_my_booking(booking_id):
+    user_name = request.form.get("user_name", "").strip()
+    if not _is_valid_booking_name(user_name):
+        return redirect(url_for("my_bookings"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM bookings WHERE id = ? AND LOWER(user_name) = LOWER(?)",
+        (booking_id, user_name),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        conn.close()
+        flash("Booking not found for this name.", "error")
+        return redirect(url_for("my_bookings", name=user_name))
+
+    cursor.execute("DELETE FROM bookings WHERE id = ?", (booking_id,))
+    conn.commit()
+    conn.close()
+    flash("Your booking was cancelled.", "success")
+    return redirect(url_for("my_bookings", name=user_name))
 
 
 @app.route("/bookings")

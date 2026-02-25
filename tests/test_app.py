@@ -411,6 +411,99 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Name contains invalid characters.", response.data)
 
+    def test_my_bookings_page_loads_for_non_admin(self):
+        self._logout_admin()
+        response = self.client.get("/my_bookings")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"My Bookings", response.data)
+        self.assertIn(b"Find Bookings", response.data)
+
+    def test_my_bookings_lookup_by_name(self):
+        event_id = self._create_event(name="Community Meetup", date="2026-06-15", location="Boston")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Alex", "tickets": "2"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Nima", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        self._logout_admin()
+        response = self.client.get("/my_bookings?name=Alex")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Community Meetup", response.data)
+        self.assertIn(b"Alex", response.data)
+        self.assertNotIn(b"Nima", response.data)
+
+    def test_my_bookings_cancel_success(self):
+        event_id = self._create_event(name="Expo", date="2026-06-20", location="NYC")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Chris", "tickets": "2"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        with sqlite3.connect(self.db_path) as conn:
+            booking_id = conn.execute(
+                "SELECT id FROM bookings WHERE user_name = ?",
+                ("Chris",),
+            ).fetchone()[0]
+
+        self._logout_admin()
+        response = self._post_with_csrf(
+            f"/my_bookings/cancel/{booking_id}",
+            {"user_name": "Chris"},
+            get_path="/my_bookings?name=Chris",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Your booking was cancelled.", response.data)
+
+        with sqlite3.connect(self.db_path) as conn:
+            remaining = conn.execute(
+                "SELECT COUNT(*) FROM bookings WHERE id = ?",
+                (booking_id,),
+            ).fetchone()[0]
+        self.assertEqual(remaining, 0)
+
+    def test_my_bookings_cancel_rejects_wrong_name(self):
+        event_id = self._create_event(name="Expo", date="2026-06-20", location="NYC")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Chris", "tickets": "2"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        with sqlite3.connect(self.db_path) as conn:
+            booking_id = conn.execute(
+                "SELECT id FROM bookings WHERE user_name = ?",
+                ("Chris",),
+            ).fetchone()[0]
+
+        self._logout_admin()
+        response = self._post_with_csrf(
+            f"/my_bookings/cancel/{booking_id}",
+            {"user_name": "WrongName"},
+            get_path="/my_bookings?name=Chris",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Booking not found for this name.", response.data)
+
+        with sqlite3.connect(self.db_path) as conn:
+            remaining = conn.execute(
+                "SELECT COUNT(*) FROM bookings WHERE id = ?",
+                (booking_id,),
+            ).fetchone()[0]
+        self.assertEqual(remaining, 1)
+
     def test_bookings_page_empty_state(self):
         response = self.client.get("/bookings")
         self.assertEqual(response.status_code, 200)

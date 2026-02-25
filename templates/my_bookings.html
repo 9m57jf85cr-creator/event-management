@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}My Bookings{% endblock %}
+
+{% block content %}
+<h1>My Bookings</h1>
+<form action="{{ url_for('my_bookings') }}" method="GET" class="row" style="margin-bottom: 12px;">
+    <input type="text" name="name" value="{{ user_name | default('', true) }}" placeholder="Enter your booking name" required>
+    <button type="submit">Find Bookings</button>
+</form>
+
+{% if has_search %}
+    {% for booking in booking_data | default([], true) %}
+        <div class="card">
+            <p><strong>Event:</strong> {{ booking.event_name }}</p>
+            <p><strong>Name:</strong> {{ booking.user_name }}</p>
+            <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
+            <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>
+            <form action="{{ url_for('cancel_my_booking', booking_id=booking.id) }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="user_name" value="{{ user_name }}">
+                <button type="submit" class="btn-danger">Cancel My Booking</button>
+            </form>
+        </div>
+    {% else %}
+        <p class="muted">No bookings found for this name.</p>
+    {% endfor %}
+{% else %}
+    <p class="muted">Search by the same name you used when booking tickets.</p>
+{% endif %}
+{% endblock %}

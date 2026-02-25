@@ -100,6 +100,7 @@
                     <button type="submit" class="btn-danger">Logout</button>
                 </form>
             {% else %}
+                <a href="{{ url_for('my_bookings') }}">My Bookings</a>
                 <a href="{{ url_for('login') }}">Admin Login</a>
             {% endif %}
         </div>
