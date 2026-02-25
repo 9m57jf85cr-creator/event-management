@@ -3,8 +3,9 @@ import re
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from app import app, init_db
+from app import app, init_db, load_runtime_config
 
 
 class EventManagementAppTests(unittest.TestCase):
@@ -85,6 +86,14 @@ class EventManagementAppTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_security_headers_present_on_html_response(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
+        self.assertEqual(response.headers.get("Referrer-Policy"), "no-referrer-when-downgrade")
+        self.assertIn("frame-ancestors 'none'", response.headers.get("Content-Security-Policy", ""))
+
     def test_add_event_success(self):
         response = self._post_with_csrf(
             "/add_event",
@@ -124,6 +133,37 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Invalid admin credentials.", response.data)
 
+    def test_login_rotates_session_csrf_token(self):
+        self._logout_admin()
+        old_token = self._extract_csrf_token("/login")
+        with self.client.session_transaction() as sess:
+            old_session_token = sess.get("_csrf_token")
+        self.assertEqual(old_token, old_session_token)
+
+        response = self.client.post(
+            "/login",
+            data={"username": "admin", "password": "admin123", "next": "", "csrf_token": old_token},
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        with self.client.session_transaction() as sess:
+            new_session_token = sess.get("_csrf_token")
+            self.assertTrue(sess.get("is_admin"))
+            self.assertTrue(sess.permanent)
+
+        self.assertNotEqual(old_session_token, new_session_token)
+
+    def test_login_rejects_external_next_url(self):
+        self._logout_admin()
+        response = self._post_with_csrf(
+            "/login",
+            {"username": "admin", "password": "admin123", "next": "//evil.example"},
+            get_path="/login",
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers.get("Location"), "/")
+
     def test_login_page_does_not_render_admin_password(self):
         self._logout_admin()
         response = self.client.get("/login")
@@ -141,6 +181,26 @@ class EventManagementAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Event name, date, and location are required.", response.data)
+
+    def test_add_event_name_too_long(self):
+        response = self._post_with_csrf(
+            "/add_event",
+            {"name": "A" * 121, "date": "2026-03-02", "location": "Seattle"},
+            get_path="/",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Event name cannot exceed 120 characters.", response.data)
+
+    def test_add_event_invalid_control_characters(self):
+        response = self._post_with_csrf(
+            "/add_event",
+            {"name": "Hack\x01Night", "date": "2026-03-02", "location": "Seattle"},
+            get_path="/",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Event fields contain invalid characters.", response.data)
 
     def test_add_event_valid_date_format(self):
         response = self._post_with_csrf(
@@ -266,6 +326,40 @@ class EventManagementAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Tickets must be a positive integer.", response.data)
+
+    def test_booking_validation_tickets_too_high(self):
+        event_id = self._create_event()
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Sonam", "tickets": "101"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Tickets cannot exceed 100.", response.data)
+
+    def test_booking_validation_name_too_long(self):
+        event_id = self._create_event()
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "A" * 81, "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Name cannot exceed 80 characters.", response.data)
+
+    def test_booking_validation_invalid_control_characters(self):
+        event_id = self._create_event()
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "User\x01", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Name contains invalid characters.", response.data)
 
     def test_bookings_page_empty_state(self):
         response = self.client.get("/bookings")
@@ -470,6 +564,46 @@ class EventManagementAppTests(unittest.TestCase):
         response = self.client.get("/bookings/export.csv", follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin login required.", response.data)
+
+    def test_load_runtime_config_rejects_empty_admin_credentials(self):
+        with patch.dict(
+            os.environ,
+            {"ADMIN_USERNAME": "", "ADMIN_PASSWORD": "admin123"},
+            clear=False,
+        ):
+            with self.assertRaises(RuntimeError):
+                load_runtime_config()
+
+    def test_load_runtime_config_rejects_default_secret_in_production(self):
+        with patch.dict(
+            os.environ,
+            {
+                "FLASK_ENV": "production",
+                "SECRET_KEY": "dev-secret-key-change-me",
+                "ADMIN_USERNAME": "admin",
+                "ADMIN_PASSWORD": "admin123",
+            },
+            clear=False,
+        ):
+            with self.assertRaises(RuntimeError):
+                load_runtime_config()
+
+    def test_load_runtime_config_sets_production_secure_mode(self):
+        with patch.dict(
+            os.environ,
+            {
+                "FLASK_ENV": "production",
+                "SECRET_KEY": "x" * 40,
+                "ADMIN_USERNAME": "admin",
+                "ADMIN_PASSWORD": "admin123",
+                "DATABASE": "events.db",
+            },
+            clear=False,
+        ):
+            config = load_runtime_config()
+
+        self.assertTrue(config["IS_PRODUCTION"])
+        self.assertTrue(config["DATABASE"].endswith("events.db"))
 
 
 if __name__ == "__main__":

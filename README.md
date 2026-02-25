@@ -32,6 +32,31 @@ EOF
 
 Restart the app after changing `.env`.
 
+You can also set an optional database path:
+
+```env
+DATABASE=events.db
+```
+
+If `DATABASE` is a relative path, it is resolved from the repo root.
+
+## Production Security Notes
+
+Set production environment variables before starting:
+
+```bash
+export FLASK_ENV=production
+export SECRET_KEY='set-a-strong-random-secret'
+export ADMIN_USERNAME='your-admin-user'
+export ADMIN_PASSWORD='your-admin-password'
+```
+
+In production mode, the app:
+- rejects the default development `SECRET_KEY`
+- enables secure session cookies (`SESSION_COOKIE_SECURE=True`)
+- keeps `HttpOnly` and `SameSite=Lax` session cookie protections
+- applies baseline security headers (CSP, frame, content-type, referrer)
+
 ## Alternative Run Command
 
 ```bash

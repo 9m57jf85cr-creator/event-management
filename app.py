@@ -1,11 +1,19 @@
 from flask import Flask, abort, flash, make_response, redirect, render_template, request, session, url_for
 from datetime import datetime
+from datetime import timedelta
 from functools import wraps
 import csv
 import io
 import os
 import secrets
 import sqlite3
+
+DEFAULT_SECRET_KEY = "dev-secret-key-change-me"
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+MAX_EVENT_NAME_LENGTH = 120
+MAX_LOCATION_LENGTH = 120
+MAX_BOOKING_NAME_LENGTH = 80
+MAX_TICKETS = 100
 
 
 def _load_dotenv(path=".env"):
@@ -27,11 +35,46 @@ def _load_dotenv(path=".env"):
 
 _load_dotenv()
 
+
+def _is_production_environment():
+    return os.getenv("FLASK_ENV", "development").strip().lower() == "production"
+
+
+def _resolve_database_path(database_value):
+    database_path = database_value.strip() or "events.db"
+    if os.path.isabs(database_path):
+        return database_path
+    return os.path.join(PROJECT_ROOT, database_path)
+
+
+def load_runtime_config():
+    is_production = _is_production_environment()
+    secret_key = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
+    admin_username = os.getenv("ADMIN_USERNAME", "admin").strip()
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+    database = _resolve_database_path(os.getenv("DATABASE", "events.db"))
+
+    if not admin_username or not admin_password:
+        raise RuntimeError("ADMIN_USERNAME and ADMIN_PASSWORD must be set.")
+
+    if is_production and secret_key == DEFAULT_SECRET_KEY:
+        raise RuntimeError("SECRET_KEY must be changed in production.")
+
+    return {
+        "SECRET_KEY": secret_key,
+        "DATABASE": database,
+        "ADMIN_USERNAME": admin_username,
+        "ADMIN_PASSWORD": admin_password,
+        "IS_PRODUCTION": is_production,
+    }
+
+
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
-app.config["DATABASE"] = "events.db"
-app.config["ADMIN_USERNAME"] = os.getenv("ADMIN_USERNAME", "admin")
-app.config["ADMIN_PASSWORD"] = os.getenv("ADMIN_PASSWORD", "admin123")
+app.config.update(load_runtime_config())
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = app.config["IS_PRODUCTION"]
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
 
 
 def get_db_connection():
@@ -86,6 +129,18 @@ def _validate_event_fields(name, date, location):
         flash("Event name, date, and location are required.", "error")
         return False
 
+    if len(name) > MAX_EVENT_NAME_LENGTH:
+        flash(f"Event name cannot exceed {MAX_EVENT_NAME_LENGTH} characters.", "error")
+        return False
+
+    if len(location) > MAX_LOCATION_LENGTH:
+        flash(f"Location cannot exceed {MAX_LOCATION_LENGTH} characters.", "error")
+        return False
+
+    if any(ord(ch) < 32 for ch in name + location):
+        flash("Event fields contain invalid characters.", "error")
+        return False
+
     try:
         datetime.strptime(date, "%Y-%m-%d")
     except ValueError:
@@ -125,6 +180,19 @@ def admin_required(view_func):
     return wrapper
 
 
+def _is_safe_next_url(next_url):
+    return next_url.startswith("/") and not next_url.startswith("//")
+
+
+def _credentials_match(username, password):
+    expected_username = app.config["ADMIN_USERNAME"]
+    expected_password = app.config["ADMIN_PASSWORD"]
+    return (
+        secrets.compare_digest(username.encode("utf-8"), expected_username.encode("utf-8"))
+        and secrets.compare_digest(password.encode("utf-8"), expected_password.encode("utf-8"))
+    )
+
+
 def _generate_csrf_token():
     token = session.get("_csrf_token")
     if not token:
@@ -147,6 +215,23 @@ def protect_from_csrf():
     received = request.form.get("csrf_token", "")
     if not expected or not received or not secrets.compare_digest(expected, received):
         abort(400, description="Invalid CSRF token.")
+
+
+@app.after_request
+def apply_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer-when-downgrade"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none'"
+    )
+    return response
 
 
 # Create or migrate database tables
@@ -190,13 +275,13 @@ def login():
         password = request.form.get("password", "")
         next_url = request.form.get("next", "")
 
-        if (
-            username == app.config["ADMIN_USERNAME"]
-            and password == app.config["ADMIN_PASSWORD"]
-        ):
+        if _credentials_match(username, password):
+            session.clear()
             session["is_admin"] = True
+            session.permanent = True
+            _generate_csrf_token()
             flash("Logged in as admin.", "success")
-            if next_url.startswith("/"):
+            if _is_safe_next_url(next_url):
                 return redirect(next_url)
             return redirect(url_for("home"))
 
@@ -335,12 +420,24 @@ def book_event(event_id):
             flash("Your name is required.", "error")
             return redirect(url_for("book_event", event_id=event_id))
 
+        if len(name) > MAX_BOOKING_NAME_LENGTH:
+            flash(f"Name cannot exceed {MAX_BOOKING_NAME_LENGTH} characters.", "error")
+            return redirect(url_for("book_event", event_id=event_id))
+
+        if any(ord(ch) < 32 for ch in name):
+            flash("Name contains invalid characters.", "error")
+            return redirect(url_for("book_event", event_id=event_id))
+
         try:
             tickets = int(tickets_raw)
             if tickets <= 0:
                 raise ValueError
         except ValueError:
             flash("Tickets must be a positive integer.", "error")
+            return redirect(url_for("book_event", event_id=event_id))
+
+        if tickets > MAX_TICKETS:
+            flash(f"Tickets cannot exceed {MAX_TICKETS}.", "error")
             return redirect(url_for("book_event", event_id=event_id))
 
         conn = get_db_connection()
@@ -483,7 +580,15 @@ def export_bookings_csv():
 def main():
     host = os.getenv("FLASK_HOST", "127.0.0.1")
     port = int(os.getenv("FLASK_PORT", "5000"))
-    app.run(debug=True, host=host, port=port)
+    debug_env = os.getenv("FLASK_DEBUG", "").strip().lower()
+    if debug_env in {"1", "true", "yes", "on"}:
+        debug = True
+    elif debug_env in {"0", "false", "no", "off"}:
+        debug = False
+    else:
+        debug = not app.config["IS_PRODUCTION"]
+
+    app.run(debug=debug, host=host, port=port)
 
 
 if __name__ == "__main__":

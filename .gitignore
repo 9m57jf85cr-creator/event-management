@@ -4,6 +4,12 @@ __pycache__/
 .ruff_cache/
 .coverage
 events.db
+*.db-journal
+*.sqlite
+*.sqlite3
 .env
+.env.local
 .venv/
 venv/
+.DS_Store
+Open
