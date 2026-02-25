@@ -94,6 +94,7 @@
             <a href="{{ url_for('home') }}">Home</a>
             {% if session.get('is_admin') %}
                 <a href="{{ url_for('bookings') }}">Bookings</a>
+                <a href="{{ url_for('booking_audit') }}">Audit</a>
                 <span class="muted">Admin</span>
                 <form action="{{ url_for('logout') }}" method="POST" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

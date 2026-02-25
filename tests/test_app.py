@@ -86,6 +86,19 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIsNotNone(row)
         return row[0]
 
+    def _get_latest_audit_row(self):
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT booking_id, reference_code, action, actor
+                FROM booking_audit
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        self.assertIsNotNone(row)
+        return row
+
     def test_post_without_csrf_token_rejected(self):
         self._logout_admin()
         response = self.client.post(
@@ -483,6 +496,11 @@ class EventManagementAppTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(remaining, 0)
 
+        audit_row = self._get_latest_audit_row()
+        self.assertEqual(audit_row[1], reference_code)
+        self.assertEqual(audit_row[2], "cancel")
+        self.assertEqual(audit_row[3], "self_service")
+
     def test_my_bookings_cancel_rejects_wrong_name(self):
         event_id = self._create_event(name="Expo", date="2026-06-20", location="NYC")
         self._post_with_csrf(
@@ -658,6 +676,11 @@ class EventManagementAppTests(unittest.TestCase):
 
         self.assertEqual(remaining, 0)
 
+        audit_row = self._get_latest_audit_row()
+        self.assertEqual(audit_row[0], booking_id)
+        self.assertEqual(audit_row[2], "cancel")
+        self.assertEqual(audit_row[3], "admin")
+
     def test_cancel_booking_not_found(self):
         response = self._post_with_csrf(
             "/cancel_booking/99999",
@@ -731,6 +754,76 @@ class EventManagementAppTests(unittest.TestCase):
     def test_export_bookings_csv_requires_admin(self):
         self._logout_admin()
         response = self.client.get("/bookings/export.csv", follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Admin login required.", response.data)
+
+    def test_booking_audit_page_lists_entries(self):
+        event_id = self._create_event(name="Audit Event", date="2026-10-01", location="NYC")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "AuditedUser", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        reference_code = self._get_booking_reference(event_id, "AuditedUser")
+        with sqlite3.connect(self.db_path) as conn:
+            booking_id = conn.execute(
+                "SELECT id FROM bookings WHERE reference_code = ?",
+                (reference_code,),
+            ).fetchone()[0]
+
+        self._post_with_csrf(
+            f"/cancel_booking/{booking_id}",
+            {},
+            get_path="/bookings",
+            follow_redirects=True,
+        )
+
+        response = self.client.get("/booking_audit")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Booking Audit", response.data)
+        self.assertIn(reference_code.encode("utf-8"), response.data)
+        self.assertIn(b"admin", response.data)
+
+    def test_booking_audit_export_csv(self):
+        event_id = self._create_event(name="Audit Export Event", date="2026-10-02", location="LA")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "ExportUser", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        reference_code = self._get_booking_reference(event_id, "ExportUser")
+
+        booking_id = None
+        with sqlite3.connect(self.db_path) as conn:
+            booking_id = conn.execute(
+                "SELECT id FROM bookings WHERE reference_code = ?",
+                (reference_code,),
+            ).fetchone()[0]
+
+        self._post_with_csrf(
+            f"/cancel_booking/{booking_id}",
+            {},
+            get_path="/bookings",
+            follow_redirects=True,
+        )
+
+        response = self.client.get("/booking_audit/export.csv")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("Content-Type"), "text/csv; charset=utf-8")
+        self.assertIn(
+            "attachment; filename=booking_audit_report.csv",
+            response.headers.get("Content-Disposition", ""),
+        )
+        csv_text = response.data.decode("utf-8")
+        self.assertIn("booking_id,reference_code,action,actor,created_at", csv_text)
+        self.assertIn(reference_code, csv_text)
+        self.assertIn("cancel", csv_text)
+
+    def test_booking_audit_page_requires_admin(self):
+        self._logout_admin()
+        response = self.client.get("/booking_audit", follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Admin login required.", response.data)
 

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Booking Audit{% endblock %}
+
+{% block content %}
+<h1>Booking Audit</h1>
+<form action="{{ url_for('booking_audit') }}" method="GET" class="row" style="margin-bottom: 10px;">
+    <select name="action">
+        <option value="" {% if not filters.action %}selected{% endif %}>Action: All</option>
+        <option value="cancel" {% if filters.action == "cancel" %}selected{% endif %}>Action: Cancel</option>
+    </select>
+    <select name="actor">
+        <option value="" {% if not filters.actor %}selected{% endif %}>Actor: All</option>
+        <option value="admin" {% if filters.actor == "admin" %}selected{% endif %}>Actor: Admin</option>
+        <option value="self_service" {% if filters.actor == "self_service" %}selected{% endif %}>Actor: Self Service</option>
+    </select>
+    <input type="text" name="ref" value="{{ filters.reference_code }}" placeholder="Reference code">
+    <input type="date" name="date_from" value="{{ filters.date_from }}">
+    <input type="date" name="date_to" value="{{ filters.date_to }}">
+    <button type="submit">Filter</button>
+</form>
+<p>
+    <a href="{{ url_for('export_booking_audit_csv', action=filters.action, actor=filters.actor, ref=filters.reference_code, date_from=filters.date_from, date_to=filters.date_to) }}">
+        Export Audit CSV
+    </a>
+</p>
+
+{% for row in audit_data | default([], true) %}
+    <div class="card">
+        <p><strong>Booking ID:</strong> {{ row.booking_id }}</p>
+        <p><strong>Reference:</strong> {{ row.reference_code }}</p>
+        <p><strong>Action:</strong> {{ row.action }}</p>
+        <p><strong>Actor:</strong> {{ row.actor }}</p>
+        <p class="muted"><strong>When:</strong> {{ row.created_at }}</p>
+    </div>
+{% else %}
+    <p class="muted">No audit entries found.</p>
+{% endfor %}
+{% endblock %}

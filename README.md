@@ -2,6 +2,7 @@
 
 Simple event management app with event creation, capacity management, booking, and cancellation flows.
 Each booking now gets a unique reference code for self-service lookup and cancellation.
+Admin users can review cancellation history from the booking audit page.
 
 ## Project Layout
 

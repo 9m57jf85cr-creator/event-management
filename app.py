@@ -164,6 +164,31 @@ def _ensure_events_capacity(cursor):
     )
 
 
+def _ensure_booking_audit_table(cursor):
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS booking_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER NOT NULL,
+            reference_code TEXT NOT NULL,
+            action TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+
+def _log_booking_audit(cursor, booking_id, reference_code, action, actor):
+    cursor.execute(
+        """
+        INSERT INTO booking_audit (booking_id, reference_code, action, actor)
+        VALUES (?, ?, ?, ?)
+        """,
+        (booking_id, reference_code, action, actor),
+    )
+
+
 def _parse_event_form(default_capacity=None):
     name = request.form.get("name", "").strip()
     date = request.form.get("date", "").strip()
@@ -235,6 +260,56 @@ def _parse_booking_sort():
 
     order_by_sql = f"{allowed_sort_fields[sort_by]} {sort_dir.upper()}, b.id DESC"
     return sort_by, sort_dir, order_by_sql
+
+
+def _parse_booking_audit_filters():
+    action = request.args.get("action", "").strip().lower()
+    if action not in {"", "cancel"}:
+        action = ""
+
+    actor = request.args.get("actor", "").strip().lower()
+    if actor not in {"", "admin", "self_service"}:
+        actor = ""
+
+    reference_code = request.args.get("ref", "").strip().upper()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+    where_parts = []
+    params = []
+
+    if action:
+        where_parts.append("action = ?")
+        params.append(action)
+
+    if actor:
+        where_parts.append("actor = ?")
+        params.append(actor)
+
+    if reference_code:
+        where_parts.append("reference_code = ?")
+        params.append(reference_code)
+
+    if date_from:
+        where_parts.append("DATE(created_at) >= DATE(?)")
+        params.append(date_from)
+
+    if date_to:
+        where_parts.append("DATE(created_at) <= DATE(?)")
+        params.append(date_to)
+
+    where_clause = ""
+    if where_parts:
+        where_clause = "WHERE " + " AND ".join(where_parts)
+
+    return {
+        "action": action,
+        "actor": actor,
+        "reference_code": reference_code,
+        "date_from": date_from,
+        "date_to": date_to,
+        "where_clause": where_clause,
+        "params": params,
+    }
 
 
 def admin_required(view_func):
@@ -366,6 +441,7 @@ def init_db():
     _ensure_bookings_created_at(cursor)
     _ensure_bookings_reference_code(cursor)
     _ensure_events_capacity(cursor)
+    _ensure_booking_audit_table(cursor)
     conn.commit()
     conn.close()
 
@@ -672,7 +748,7 @@ def cancel_my_booking(reference_code):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id FROM bookings WHERE reference_code = ?",
+        "SELECT id, reference_code FROM bookings WHERE reference_code = ?",
         (reference_code,),
     )
     row = cursor.fetchone()
@@ -681,7 +757,14 @@ def cancel_my_booking(reference_code):
         flash("Booking not found for this reference code.", "error")
         return redirect(url_for("my_bookings", ref=reference_code))
 
-    cursor.execute("DELETE FROM bookings WHERE reference_code = ?", (reference_code,))
+    cursor.execute("DELETE FROM bookings WHERE id = ?", (row[0],))
+    _log_booking_audit(
+        cursor=cursor,
+        booking_id=row[0],
+        reference_code=row[1],
+        action="cancel",
+        actor="self_service",
+    )
     conn.commit()
     conn.close()
     flash("Your booking was cancelled.", "success")
@@ -762,13 +845,21 @@ def bookings():
 def cancel_booking(booking_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM bookings WHERE id = ?", (booking_id,))
-    if cursor.fetchone() is None:
+    cursor.execute("SELECT id, reference_code FROM bookings WHERE id = ?", (booking_id,))
+    booking_row = cursor.fetchone()
+    if booking_row is None:
         conn.close()
         flash("Booking not found.", "error")
         return redirect(url_for("bookings"))
 
     cursor.execute("DELETE FROM bookings WHERE id = ?", (booking_id,))
+    _log_booking_audit(
+        cursor=cursor,
+        booking_id=booking_row[0],
+        reference_code=booking_row[1],
+        action="cancel",
+        actor="admin",
+    )
     conn.commit()
     conn.close()
     flash("Booking cancelled.", "success")
@@ -810,6 +901,68 @@ def export_bookings_csv():
     response = make_response(output.getvalue())
     response.headers["Content-Type"] = "text/csv; charset=utf-8"
     response.headers["Content-Disposition"] = "attachment; filename=bookings_report.csv"
+    return response
+
+
+@app.route("/booking_audit")
+@admin_required
+def booking_audit():
+    filters = _parse_booking_audit_filters()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""
+        SELECT id, booking_id, reference_code, action, actor, created_at
+        FROM booking_audit
+        {filters['where_clause']}
+        ORDER BY created_at DESC, id DESC
+        """,
+        filters["params"],
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    audit_data = [
+        {
+            "id": row[0],
+            "booking_id": row[1],
+            "reference_code": row[2],
+            "action": row[3],
+            "actor": row[4],
+            "created_at": row[5],
+        }
+        for row in rows
+    ]
+
+    return render_template("booking_audit.html", audit_data=audit_data, filters=filters)
+
+
+@app.route("/booking_audit/export.csv")
+@admin_required
+def export_booking_audit_csv():
+    filters = _parse_booking_audit_filters()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""
+        SELECT booking_id, reference_code, action, actor, created_at
+        FROM booking_audit
+        {filters['where_clause']}
+        ORDER BY created_at DESC, id DESC
+        """,
+        filters["params"],
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["booking_id", "reference_code", "action", "actor", "created_at"])
+    writer.writerows(rows)
+
+    response = make_response(output.getvalue())
+    response.headers["Content-Type"] = "text/csv; charset=utf-8"
+    response.headers["Content-Disposition"] = "attachment; filename=booking_audit_report.csv"
     return response
 
 
