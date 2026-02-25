@@ -189,6 +189,37 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(third.status_code, 429)
         self.assertIn(b"Too many login attempts", third.data)
 
+    def test_login_rate_limit_persists_across_clients(self):
+        self._logout_admin()
+        app.config["RATE_LIMIT_LOGIN_MAX_REQUESTS"] = 2
+        reset_rate_limit_state()
+
+        self._post_with_csrf(
+            "/login",
+            {"username": "wrong", "password": "wrong", "next": ""},
+            get_path="/login",
+            follow_redirects=False,
+        )
+        self._post_with_csrf(
+            "/login",
+            {"username": "wrong", "password": "wrong", "next": ""},
+            get_path="/login",
+            follow_redirects=False,
+        )
+
+        new_client = app.test_client()
+        login_page = new_client.get("/login")
+        self.assertEqual(login_page.status_code, 200)
+        html = login_page.data.decode("utf-8")
+        token = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+        blocked = new_client.post(
+            "/login",
+            data={"username": "wrong", "password": "wrong", "next": "", "csrf_token": token},
+            follow_redirects=False,
+        )
+        self.assertEqual(blocked.status_code, 429)
+        self.assertIn(b"Too many login attempts", blocked.data)
+
     def test_login_rotates_session_csrf_token(self):
         self._logout_admin()
         old_token = self._extract_csrf_token("/login")
@@ -415,6 +446,37 @@ class EventManagementAppTests(unittest.TestCase):
         )
         self.assertEqual(third.status_code, 429)
         self.assertIn(b"Too many booking attempts", third.data)
+
+    def test_rate_limit_scopes_are_independent(self):
+        event_id = self._create_event()
+        app.config["RATE_LIMIT_LOGIN_MAX_REQUESTS"] = 1
+        app.config["RATE_LIMIT_BOOKING_MAX_REQUESTS"] = 1
+        reset_rate_limit_state()
+
+        self._logout_admin()
+        first_login = self._post_with_csrf(
+            "/login",
+            {"username": "wrong", "password": "wrong", "next": ""},
+            get_path="/login",
+            follow_redirects=False,
+        )
+        self.assertEqual(first_login.status_code, 200)
+
+        second_login = self._post_with_csrf(
+            "/login",
+            {"username": "wrong", "password": "wrong", "next": ""},
+            get_path="/login",
+            follow_redirects=False,
+        )
+        self.assertEqual(second_login.status_code, 429)
+
+        booking_attempt = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Sonam", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=False,
+        )
+        self.assertEqual(booking_attempt.status_code, 302)
 
     def test_booking_validation_tickets_too_high(self):
         event_id = self._create_event()

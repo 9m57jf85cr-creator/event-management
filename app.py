@@ -91,7 +91,6 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = app.config["IS_PRODUCTION"]
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
-_rate_limit_state = {}
 
 
 def get_db_connection():
@@ -188,6 +187,22 @@ def _ensure_booking_audit_table(cursor):
             action TEXT NOT NULL,
             actor TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+
+def _ensure_request_rate_limit_table(cursor):
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS request_rate_limit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL,
+            client_ip TEXT NOT NULL,
+            bucket_start INTEGER NOT NULL,
+            request_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(scope, client_ip, bucket_start)
         )
         """
     )
@@ -391,7 +406,15 @@ def _get_client_ip():
 
 
 def reset_rate_limit_state():
-    _rate_limit_state.clear()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM request_rate_limit")
+    except sqlite3.OperationalError:
+        conn.close()
+        return
+    conn.commit()
+    conn.close()
 
 
 def _check_rate_limit(scope):
@@ -401,19 +424,39 @@ def _check_rate_limit(scope):
     }
     max_requests = limit_mapping[scope]
     window_seconds = app.config["RATE_LIMIT_WINDOW_SECONDS"]
-    now = time.time()
-    key = (scope, _get_client_ip())
-    bucket = _rate_limit_state.setdefault(key, [])
+    now = int(time.time())
+    client_ip = _get_client_ip()
+    bucket_start = now - (now % window_seconds)
+    cutoff = now - (window_seconds * 10)
 
-    min_timestamp = now - window_seconds
-    while bucket and bucket[0] <= min_timestamp:
-        bucket.pop(0)
-
-    if len(bucket) >= max_requests:
-        return False
-
-    bucket.append(now)
-    return True
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("BEGIN IMMEDIATE")
+    cursor.execute(
+        "DELETE FROM request_rate_limit WHERE scope = ? AND client_ip = ? AND bucket_start < ?",
+        (scope, client_ip, cutoff),
+    )
+    cursor.execute(
+        """
+        INSERT INTO request_rate_limit (scope, client_ip, bucket_start, request_count)
+        VALUES (?, ?, ?, 1)
+        ON CONFLICT(scope, client_ip, bucket_start)
+        DO UPDATE SET request_count = request_count + 1
+        """,
+        (scope, client_ip, bucket_start),
+    )
+    cursor.execute(
+        """
+        SELECT request_count
+        FROM request_rate_limit
+        WHERE scope = ? AND client_ip = ? AND bucket_start = ?
+        """,
+        (scope, client_ip, bucket_start),
+    )
+    request_count = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+    return request_count <= max_requests
 
 
 def _generate_csrf_token():
@@ -504,6 +547,7 @@ def init_db():
     _ensure_bookings_reference_code(cursor)
     _ensure_events_capacity(cursor)
     _ensure_booking_audit_table(cursor)
+    _ensure_request_rate_limit_table(cursor)
     conn.commit()
     conn.close()
 
