@@ -25,6 +25,7 @@
         <p><strong>Event:</strong> {{ booking.event_name }}</p>
         <p><strong>User:</strong> {{ booking.user_name }}</p>
         <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
+        <p><strong>Reference Code:</strong> {{ booking.reference_code }}</p>
         <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>
         <form action="{{ url_for('cancel_booking', booking_id=booking.id) }}" method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

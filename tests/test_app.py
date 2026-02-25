@@ -77,6 +77,15 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIsNotNone(row)
         return row[0]
 
+    def _get_booking_reference(self, event_id, user_name):
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT reference_code FROM bookings WHERE event_id = ? AND user_name = ? ORDER BY id DESC",
+                (event_id, user_name),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        return row[0]
+
     def test_post_without_csrf_token_rejected(self):
         self._logout_admin()
         response = self.client.post(
@@ -308,11 +317,14 @@ class EventManagementAppTests(unittest.TestCase):
 
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(
-                "SELECT user_name, tickets FROM bookings WHERE event_id = ?",
+                "SELECT user_name, tickets, reference_code FROM bookings WHERE event_id = ?",
                 (event_id,),
             ).fetchone()
 
-        self.assertEqual(row, ("Sonam", 3))
+        self.assertEqual(row[0], "Sonam")
+        self.assertEqual(row[1], 3)
+        self.assertRegex(row[2], r"^[A-Z0-9]{10}$")
+        self.assertIn(b"Your reference code:", response.data)
 
     def test_booking_validation_error(self):
         event_id = self._create_event()
@@ -434,11 +446,14 @@ class EventManagementAppTests(unittest.TestCase):
         )
 
         self._logout_admin()
-        response = self.client.get("/my_bookings?name=Alex")
+        reference_code = self._get_booking_reference(event_id, "Alex")
+
+        response = self.client.get(f"/my_bookings?ref={reference_code}")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Community Meetup", response.data)
         self.assertIn(b"Alex", response.data)
         self.assertNotIn(b"Nima", response.data)
+        self.assertIn(reference_code.encode("utf-8"), response.data)
 
     def test_my_bookings_cancel_success(self):
         event_id = self._create_event(name="Expo", date="2026-06-20", location="NYC")
@@ -449,17 +464,13 @@ class EventManagementAppTests(unittest.TestCase):
             follow_redirects=True,
         )
 
-        with sqlite3.connect(self.db_path) as conn:
-            booking_id = conn.execute(
-                "SELECT id FROM bookings WHERE user_name = ?",
-                ("Chris",),
-            ).fetchone()[0]
+        reference_code = self._get_booking_reference(event_id, "Chris")
 
         self._logout_admin()
         response = self._post_with_csrf(
-            f"/my_bookings/cancel/{booking_id}",
-            {"user_name": "Chris"},
-            get_path="/my_bookings?name=Chris",
+            f"/my_bookings/cancel/{reference_code}",
+            {},
+            get_path=f"/my_bookings?ref={reference_code}",
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)
@@ -467,8 +478,8 @@ class EventManagementAppTests(unittest.TestCase):
 
         with sqlite3.connect(self.db_path) as conn:
             remaining = conn.execute(
-                "SELECT COUNT(*) FROM bookings WHERE id = ?",
-                (booking_id,),
+                "SELECT COUNT(*) FROM bookings WHERE reference_code = ?",
+                (reference_code,),
             ).fetchone()[0]
         self.assertEqual(remaining, 0)
 
@@ -481,28 +492,43 @@ class EventManagementAppTests(unittest.TestCase):
             follow_redirects=True,
         )
 
-        with sqlite3.connect(self.db_path) as conn:
-            booking_id = conn.execute(
-                "SELECT id FROM bookings WHERE user_name = ?",
-                ("Chris",),
-            ).fetchone()[0]
+        reference_code = self._get_booking_reference(event_id, "Chris")
 
         self._logout_admin()
         response = self._post_with_csrf(
-            f"/my_bookings/cancel/{booking_id}",
-            {"user_name": "WrongName"},
-            get_path="/my_bookings?name=Chris",
+            "/my_bookings/cancel/INVALID!",
+            {},
+            get_path=f"/my_bookings?ref={reference_code}",
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Booking not found for this name.", response.data)
+        self.assertIn(b"Invalid booking reference code.", response.data)
 
         with sqlite3.connect(self.db_path) as conn:
             remaining = conn.execute(
-                "SELECT COUNT(*) FROM bookings WHERE id = ?",
-                (booking_id,),
+                "SELECT COUNT(*) FROM bookings WHERE reference_code = ?",
+                (reference_code,),
             ).fetchone()[0]
         self.assertEqual(remaining, 1)
+
+    def test_my_bookings_cancel_rejects_unknown_reference_code(self):
+        event_id = self._create_event(name="Expo", date="2026-06-20", location="NYC")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Chris", "tickets": "2"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        self._logout_admin()
+        response = self._post_with_csrf(
+            "/my_bookings/cancel/AAAAAAAAAA",
+            {},
+            get_path="/login",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Booking not found for this reference code.", response.data)
 
     def test_bookings_page_empty_state(self):
         response = self.client.get("/bookings")
@@ -656,7 +682,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.headers.get("Content-Type"), "text/csv; charset=utf-8")
         self.assertIn("attachment; filename=bookings_report.csv", response.headers.get("Content-Disposition", ""))
         csv_text = response.data.decode("utf-8")
-        self.assertIn("booking_id,event_name,user_name,tickets,created_at", csv_text)
+        self.assertIn("booking_id,event_name,user_name,tickets,created_at,reference_code", csv_text)
         self.assertIn("Expo", csv_text)
         self.assertIn("Chris", csv_text)
 

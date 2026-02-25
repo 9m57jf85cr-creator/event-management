@@ -7,6 +7,7 @@ import io
 import os
 import secrets
 import sqlite3
+import string
 
 DEFAULT_SECRET_KEY = "dev-secret-key-change-me"
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -15,6 +16,7 @@ MAX_LOCATION_LENGTH = 120
 MAX_BOOKING_NAME_LENGTH = 80
 MAX_TICKETS = 100
 MAX_EVENT_CAPACITY = 5000
+BOOKING_REFERENCE_LENGTH = 10
 
 
 def _load_dotenv(path=".env"):
@@ -115,6 +117,38 @@ def _ensure_bookings_created_at(cursor):
     if "created_at" not in columns:
         cursor.execute(
             "ALTER TABLE bookings ADD COLUMN created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        )
+
+
+def _generate_booking_reference(cursor):
+    alphabet = string.ascii_uppercase + string.digits
+    while True:
+        reference_code = "".join(secrets.choice(alphabet) for _ in range(BOOKING_REFERENCE_LENGTH))
+        cursor.execute("SELECT 1 FROM bookings WHERE reference_code = ?", (reference_code,))
+        if cursor.fetchone() is None:
+            return reference_code
+
+
+def _ensure_bookings_reference_code(cursor):
+    cursor.execute("PRAGMA table_info(bookings)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "reference_code" not in columns:
+        cursor.execute("ALTER TABLE bookings ADD COLUMN reference_code TEXT")
+
+    cursor.execute("SELECT id FROM bookings WHERE reference_code IS NULL OR reference_code = ''")
+    missing_rows = cursor.fetchall()
+    for row in missing_rows:
+        reference_code = _generate_booking_reference(cursor)
+        cursor.execute(
+            "UPDATE bookings SET reference_code = ? WHERE id = ?",
+            (reference_code, row[0]),
+        )
+
+    cursor.execute("PRAGMA index_list(bookings)")
+    indexes = {row[1] for row in cursor.fetchall()}
+    if "idx_bookings_reference_code" not in indexes:
+        cursor.execute(
+            "CREATE UNIQUE INDEX idx_bookings_reference_code ON bookings(reference_code)"
         )
 
 
@@ -243,6 +277,23 @@ def _is_valid_booking_name(name):
     return True
 
 
+def _is_valid_reference_code(reference_code):
+    if not reference_code:
+        flash("Booking reference code is required.", "error")
+        return False
+
+    cleaned = reference_code.strip().upper()
+    if len(cleaned) != BOOKING_REFERENCE_LENGTH:
+        flash("Invalid booking reference code.", "error")
+        return False
+
+    if not all(ch in (string.ascii_uppercase + string.digits) for ch in cleaned):
+        flash("Invalid booking reference code.", "error")
+        return False
+
+    return True
+
+
 def _generate_csrf_token():
     token = session.get("_csrf_token")
     if not token:
@@ -306,12 +357,14 @@ def init_db():
             user_name TEXT NOT NULL,
             tickets INTEGER NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reference_code TEXT UNIQUE,
             FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE
         )
     """)
 
     _migrate_bookings_table(cursor)
     _ensure_bookings_created_at(cursor)
+    _ensure_bookings_reference_code(cursor)
     _ensure_events_capacity(cursor)
     conn.commit()
     conn.close()
@@ -538,13 +591,18 @@ def book_event(event_id):
             return redirect(url_for("book_event", event_id=event_id))
 
         cursor.execute(
-            "INSERT INTO bookings (event_id, user_name, tickets) VALUES (?, ?, ?)",
-            (event_id, name, tickets),
+            "INSERT INTO bookings (event_id, user_name, tickets, reference_code) VALUES (?, ?, ?, ?)",
+            (event_id, name, tickets, _generate_booking_reference(cursor)),
         )
+        cursor.execute("SELECT reference_code FROM bookings WHERE id = last_insert_rowid()")
+        booking_reference = cursor.fetchone()[0]
         conn.commit()
         conn.close()
 
-        flash("Booking successful.", "success")
+        flash(
+            f"Booking successful. Your reference code: {booking_reference}",
+            "success",
+        )
         return redirect(url_for("home"))
 
     remaining_tickets = max(event[2] - event[3], 0)
@@ -562,23 +620,23 @@ def book_event(event_id):
 
 @app.route("/my_bookings")
 def my_bookings():
-    user_name = request.args.get("name", "").strip()
+    reference_code = request.args.get("ref", "").strip().upper()
     booking_data = []
-    has_search = bool(user_name)
+    has_search = bool(reference_code)
 
     if has_search:
-        if _is_valid_booking_name(user_name):
+        if _is_valid_reference_code(reference_code):
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT b.id, e.name, b.user_name, b.tickets, b.created_at
+                SELECT b.id, e.name, b.user_name, b.tickets, b.created_at, b.reference_code
                 FROM bookings b
                 JOIN events e ON e.id = b.event_id
-                WHERE LOWER(b.user_name) = LOWER(?)
+                WHERE b.reference_code = ?
                 ORDER BY b.created_at DESC, b.id DESC
                 """,
-                (user_name,),
+                (reference_code,),
             )
             rows = cursor.fetchall()
             conn.close()
@@ -589,44 +647,45 @@ def my_bookings():
                     "user_name": row[2],
                     "tickets": row[3],
                     "created_at": row[4],
+                    "reference_code": row[5],
                 }
                 for row in rows
             ]
         else:
             has_search = False
-            user_name = ""
+            reference_code = ""
 
     return render_template(
         "my_bookings.html",
         booking_data=booking_data,
-        user_name=user_name,
+        reference_code=reference_code,
         has_search=has_search,
     )
 
 
-@app.route("/my_bookings/cancel/<int:booking_id>", methods=["POST"])
-def cancel_my_booking(booking_id):
-    user_name = request.form.get("user_name", "").strip()
-    if not _is_valid_booking_name(user_name):
+@app.route("/my_bookings/cancel/<reference_code>", methods=["POST"])
+def cancel_my_booking(reference_code):
+    reference_code = reference_code.strip().upper()
+    if not _is_valid_reference_code(reference_code):
         return redirect(url_for("my_bookings"))
 
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id FROM bookings WHERE id = ? AND LOWER(user_name) = LOWER(?)",
-        (booking_id, user_name),
+        "SELECT id FROM bookings WHERE reference_code = ?",
+        (reference_code,),
     )
     row = cursor.fetchone()
     if row is None:
         conn.close()
-        flash("Booking not found for this name.", "error")
-        return redirect(url_for("my_bookings", name=user_name))
+        flash("Booking not found for this reference code.", "error")
+        return redirect(url_for("my_bookings", ref=reference_code))
 
-    cursor.execute("DELETE FROM bookings WHERE id = ?", (booking_id,))
+    cursor.execute("DELETE FROM bookings WHERE reference_code = ?", (reference_code,))
     conn.commit()
     conn.close()
     flash("Your booking was cancelled.", "success")
-    return redirect(url_for("my_bookings", name=user_name))
+    return redirect(url_for("my_bookings", ref=reference_code))
 
 
 @app.route("/bookings")
@@ -665,7 +724,7 @@ def bookings():
 
     cursor.execute(
         f"""
-        SELECT b.id, e.name, b.user_name, b.tickets, b.created_at
+        SELECT b.id, e.name, b.user_name, b.tickets, b.created_at, b.reference_code
         FROM bookings b
         JOIN events e ON e.id = b.event_id
         {where_clause}
@@ -683,6 +742,7 @@ def bookings():
             "user_name": row[2],
             "tickets": row[3],
             "created_at": row[4],
+            "reference_code": row[5],
         }
         for row in booking_rows
     ]
@@ -731,7 +791,7 @@ def export_bookings_csv():
 
     cursor.execute(
         f"""
-        SELECT b.id, e.name, b.user_name, b.tickets, b.created_at
+        SELECT b.id, e.name, b.user_name, b.tickets, b.created_at, b.reference_code
         FROM bookings b
         JOIN events e ON e.id = b.event_id
         {where_clause}
@@ -744,7 +804,7 @@ def export_bookings_csv():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["booking_id", "event_name", "user_name", "tickets", "created_at"])
+    writer.writerow(["booking_id", "event_name", "user_name", "tickets", "created_at", "reference_code"])
     writer.writerows(rows)
 
     response = make_response(output.getvalue())

@@ -5,7 +5,7 @@
 {% block content %}
 <h1>My Bookings</h1>
 <form action="{{ url_for('my_bookings') }}" method="GET" class="row" style="margin-bottom: 12px;">
-    <input type="text" name="name" value="{{ user_name | default('', true) }}" placeholder="Enter your booking name" required>
+    <input type="text" name="ref" value="{{ reference_code | default('', true) }}" placeholder="Enter your booking reference code" required>
     <button type="submit">Find Bookings</button>
 </form>
 
@@ -15,17 +15,17 @@
             <p><strong>Event:</strong> {{ booking.event_name }}</p>
             <p><strong>Name:</strong> {{ booking.user_name }}</p>
             <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
+            <p><strong>Reference Code:</strong> {{ booking.reference_code }}</p>
             <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>
-            <form action="{{ url_for('cancel_my_booking', booking_id=booking.id) }}" method="POST">
+            <form action="{{ url_for('cancel_my_booking', reference_code=booking.reference_code) }}" method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="user_name" value="{{ user_name }}">
                 <button type="submit" class="btn-danger">Cancel My Booking</button>
             </form>
         </div>
     {% else %}
-        <p class="muted">No bookings found for this name.</p>
+        <p class="muted">No bookings found for this reference code.</p>
     {% endfor %}
 {% else %}
-    <p class="muted">Search by the same name you used when booking tickets.</p>
+    <p class="muted">Use the unique reference code shown after a successful booking.</p>
 {% endif %}
 {% endblock %}
