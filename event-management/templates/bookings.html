@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}All Bookings{% endblock %}
+
+{% block content %}
+<h1>All Bookings</h1>
+<form action="{{ url_for('bookings') }}" method="GET" class="row" style="margin-bottom: 10px;">
+    <input type="text" name="q" value="{{ q | default('', true) }}" placeholder="Search by event or user">
+    <select name="sort_by">
+        <option value="created_at" {% if sort_by == "created_at" %}selected{% endif %}>Sort: Created At</option>
+        <option value="event_name" {% if sort_by == "event_name" %}selected{% endif %}>Sort: Event Name</option>
+        <option value="user_name" {% if sort_by == "user_name" %}selected{% endif %}>Sort: User Name</option>
+        <option value="tickets" {% if sort_by == "tickets" %}selected{% endif %}>Sort: Tickets</option>
+    </select>
+    <select name="sort_dir">
+        <option value="desc" {% if sort_dir == "desc" %}selected{% endif %}>Desc</option>
+        <option value="asc" {% if sort_dir == "asc" %}selected{% endif %}>Asc</option>
+    </select>
+    <button type="submit">Search</button>
+</form>
+<p><a href="{{ url_for('export_bookings_csv', q=q, sort_by=sort_by, sort_dir=sort_dir) }}">Export CSV Report</a></p>
+
+{% for booking in booking_data | default([], true) %}
+    <div class="card">
+        <p><strong>Event:</strong> {{ booking.event_name }}</p>
+        <p><strong>User:</strong> {{ booking.user_name }}</p>
+        <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
+        <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>
+        <form action="{{ url_for('cancel_booking', booking_id=booking.id) }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-danger">Cancel Booking</button>
+        </form>
+    </div>
+{% else %}
+    <p class="muted">No bookings yet.</p>
+{% endfor %}
+
+{% if total_pages > 1 %}
+    <div class="actions">
+        {% if page > 1 %}
+            <a href="{{ url_for('bookings', q=q, sort_by=sort_by, sort_dir=sort_dir, page=page-1) }}">Prev</a>
+        {% endif %}
+        <span class="muted">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+            <a href="{{ url_for('bookings', q=q, sort_by=sort_by, sort_dir=sort_dir, page=page+1) }}">Next</a>
+        {% endif %}
+    </div>
+{% endif %}
+{% endblock %}

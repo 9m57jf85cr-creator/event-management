@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Event Management{% endblock %}
+
+{% block content %}
+<h1>Event Management System</h1>
+
+{% if session.get('is_admin') %}
+    <div class="card">
+        <h2>Add Event</h2>
+        <form action="{{ url_for('add_event') }}" method="POST" class="row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="name" placeholder="Event Name" required>
+            <input type="date" name="date" required>
+            <input type="text" name="location" placeholder="Location" required>
+            <button type="submit">Add Event</button>
+        </form>
+    </div>
+{% endif %}
+
+<h2>All Events</h2>
+{% for event in event_data | default([], true) %}
+    <div class="card">
+        <h3>{{ event.name }}</h3>
+        <p><strong>Date:</strong> {{ event.date }}</p>
+        <p><strong>Location:</strong> {{ event.location }}</p>
+        <p class="muted">Total Tickets Booked: {{ event.total_tickets }}</p>
+        <div class="actions">
+            <a href="{{ url_for('book_event', event_id=event.id) }}">Book</a>
+            {% if session.get('is_admin') %}
+                <a href="{{ url_for('edit_event', event_id=event.id) }}">Edit</a>
+                <form action="{{ url_for('delete_event', id=event.id) }}" method="POST" class="inline-form" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn-danger">Delete</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+{% else %}
+    <p class="muted">No events yet.</p>
+{% endfor %}
+{% endblock %}
