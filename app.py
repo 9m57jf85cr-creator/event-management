@@ -1,4 +1,4 @@
-from flask import Flask, abort, flash, make_response, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, jsonify, make_response, redirect, render_template, request, session, url_for
 from datetime import datetime
 from datetime import timedelta
 from functools import wraps
@@ -341,6 +341,56 @@ def _parse_booking_audit_filters():
     }
 
 
+def _parse_events_api_filters():
+    query = request.args.get("q", "").strip()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+
+    for value in (date_from, date_to):
+        if value:
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError:
+                abort(400, description="date_from/date_to must be in YYYY-MM-DD format.")
+
+    page = request.args.get("page", default=1, type=int)
+    per_page = request.args.get("per_page", default=20, type=int)
+    if page < 1:
+        page = 1
+    if per_page < 1:
+        per_page = 1
+    per_page = min(per_page, 100)
+
+    where_parts = []
+    params = []
+    if query:
+        where_parts.append("(e.name LIKE ? OR e.location LIKE ?)")
+        pattern = f"%{query}%"
+        params.extend([pattern, pattern])
+
+    if date_from:
+        where_parts.append("e.date >= ?")
+        params.append(date_from)
+
+    if date_to:
+        where_parts.append("e.date <= ?")
+        params.append(date_to)
+
+    where_clause = ""
+    if where_parts:
+        where_clause = "WHERE " + " AND ".join(where_parts)
+
+    return {
+        "query": query,
+        "date_from": date_from,
+        "date_to": date_to,
+        "page": page,
+        "per_page": per_page,
+        "where_clause": where_clause,
+        "params": params,
+    }
+
+
 def admin_required(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
@@ -615,6 +665,70 @@ def home():
         for row in event_rows
     ]
     return render_template("index.html", event_data=event_data)
+
+
+@app.route("/api/events")
+def api_events():
+    filters = _parse_events_api_filters()
+    page = filters["page"]
+    per_page = filters["per_page"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""
+        SELECT COUNT(*)
+        FROM events e
+        {filters['where_clause']}
+        """,
+        filters["params"],
+    )
+    total_items = cursor.fetchone()[0]
+    total_pages = max(1, (total_items + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * per_page
+
+    cursor.execute(
+        f"""
+        SELECT e.id, e.name, e.date, e.location, e.capacity, COALESCE(SUM(b.tickets), 0) AS total_tickets
+        FROM events e
+        LEFT JOIN bookings b ON e.id = b.event_id
+        {filters['where_clause']}
+        GROUP BY e.id, e.name, e.date, e.location, e.capacity
+        ORDER BY e.date, e.id
+        LIMIT ? OFFSET ?
+        """,
+        filters["params"] + [per_page, offset],
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    items = []
+    for row in rows:
+        remaining_tickets = max(row[4] - row[5], 0)
+        items.append(
+            {
+                "id": row[0],
+                "name": row[1],
+                "date": row[2],
+                "location": row[3],
+                "capacity": row[4],
+                "total_tickets": row[5],
+                "remaining_tickets": remaining_tickets,
+                "is_sold_out": remaining_tickets == 0,
+            }
+        )
+
+    return jsonify(
+        {
+            "items": items,
+            "page": page,
+            "per_page": per_page,
+            "total_items": total_items,
+            "total_pages": total_pages,
+        }
+    )
 
 
 # Add Event

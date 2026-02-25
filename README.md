@@ -68,6 +68,26 @@ export RATE_LIMIT_LOGIN_MAX_REQUESTS=10
 export RATE_LIMIT_BOOKING_MAX_REQUESTS=30
 ```
 
+## Events API
+
+Public endpoint:
+
+```text
+GET /api/events
+```
+
+Query params:
+- `q` (optional): search by event name/location
+- `date_from` (optional, `YYYY-MM-DD`)
+- `date_to` (optional, `YYYY-MM-DD`)
+- `page` (optional, default `1`)
+- `per_page` (optional, default `20`, max `100`)
+
+Response includes:
+- event fields (`id`, `name`, `date`, `location`, `capacity`)
+- booking stats (`total_tickets`, `remaining_tickets`, `is_sold_out`)
+- pagination metadata (`page`, `per_page`, `total_items`, `total_pages`)
+
 ## Alternative Run Command
 
 ```bash

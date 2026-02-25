@@ -540,6 +540,77 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn(b"Remaining Tickets: 0", response.data)
         self.assertIn(b"Sold Out", response.data)
 
+    def test_api_events_returns_expected_schema(self):
+        event_id = self._create_event(name="API Event", date="2026-11-01", location="NYC", capacity="5")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "ApiUser", "tickets": "2"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        response = self.client.get("/api/events")
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("items", payload)
+        self.assertIn("page", payload)
+        self.assertIn("per_page", payload)
+        self.assertIn("total_items", payload)
+        self.assertIn("total_pages", payload)
+        api_event = next(item for item in payload["items"] if item["id"] == event_id)
+        self.assertEqual(api_event["name"], "API Event")
+        self.assertEqual(api_event["capacity"], 5)
+        self.assertEqual(api_event["total_tickets"], 2)
+        self.assertEqual(api_event["remaining_tickets"], 3)
+        self.assertFalse(api_event["is_sold_out"])
+
+    def test_api_events_filters_by_query_and_date_range(self):
+        self._create_event(name="AI Summit", date="2026-10-01", location="San Francisco", capacity="10")
+        self._create_event(name="Music Fest", date="2026-12-01", location="Austin", capacity="10")
+
+        response = self.client.get("/api/events?q=Summit&date_from=2026-09-01&date_to=2026-10-31")
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertEqual(payload["items"][0]["name"], "AI Summit")
+
+    def test_api_events_pagination(self):
+        for i in range(25):
+            self._create_event(
+                name=f"Paged API {i}",
+                date=f"2026-11-{(i % 28) + 1:02d}",
+                location="Remote",
+                capacity="20",
+            )
+
+        response = self.client.get("/api/events?page=2&per_page=10")
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["page"], 2)
+        self.assertEqual(payload["per_page"], 10)
+        self.assertEqual(len(payload["items"]), 10)
+        self.assertGreaterEqual(payload["total_items"], 25)
+
+    def test_api_events_sold_out_flag(self):
+        event_id = self._create_event(name="API Sold Out", date="2026-11-20", location="Delhi", capacity="1")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Buyer", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        response = self.client.get("/api/events?q=API%20Sold%20Out")
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertTrue(payload["items"][0]["is_sold_out"])
+        self.assertEqual(payload["items"][0]["remaining_tickets"], 0)
+
+    def test_api_events_invalid_date_filter_returns_400(self):
+        response = self.client.get("/api/events?date_from=31-12-2026")
+        self.assertEqual(response.status_code, 400)
+
     def test_booking_validation_name_too_long(self):
         event_id = self._create_event()
         response = self._post_with_csrf(
