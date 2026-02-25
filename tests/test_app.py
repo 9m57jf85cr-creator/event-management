@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app import app, init_db, load_runtime_config
+from app import app, init_db, load_runtime_config, reset_rate_limit_state
 
 
 class EventManagementAppTests(unittest.TestCase):
@@ -18,6 +18,10 @@ class EventManagementAppTests(unittest.TestCase):
         app.config["SECRET_KEY"] = "test-secret"
         app.config["ADMIN_USERNAME"] = "admin"
         app.config["ADMIN_PASSWORD"] = "admin123"
+        app.config["RATE_LIMIT_WINDOW_SECONDS"] = 60
+        app.config["RATE_LIMIT_LOGIN_MAX_REQUESTS"] = 10
+        app.config["RATE_LIMIT_BOOKING_MAX_REQUESTS"] = 30
+        reset_rate_limit_state()
         init_db()
 
         self.client = app.test_client()
@@ -154,6 +158,36 @@ class EventManagementAppTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Invalid admin credentials.", response.data)
+
+    def test_login_rate_limit_exceeded(self):
+        self._logout_admin()
+        app.config["RATE_LIMIT_LOGIN_MAX_REQUESTS"] = 2
+        reset_rate_limit_state()
+
+        first = self._post_with_csrf(
+            "/login",
+            {"username": "wrong", "password": "wrong", "next": ""},
+            get_path="/login",
+            follow_redirects=False,
+        )
+        self.assertEqual(first.status_code, 200)
+
+        second = self._post_with_csrf(
+            "/login",
+            {"username": "wrong", "password": "wrong", "next": ""},
+            get_path="/login",
+            follow_redirects=False,
+        )
+        self.assertEqual(second.status_code, 200)
+
+        third = self._post_with_csrf(
+            "/login",
+            {"username": "wrong", "password": "wrong", "next": ""},
+            get_path="/login",
+            follow_redirects=False,
+        )
+        self.assertEqual(third.status_code, 429)
+        self.assertIn(b"Too many login attempts", third.data)
 
     def test_login_rotates_session_csrf_token(self):
         self._logout_admin()
@@ -351,6 +385,36 @@ class EventManagementAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Tickets must be a positive integer.", response.data)
+
+    def test_booking_rate_limit_exceeded(self):
+        event_id = self._create_event()
+        app.config["RATE_LIMIT_BOOKING_MAX_REQUESTS"] = 2
+        reset_rate_limit_state()
+
+        first = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Sonam", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=False,
+        )
+        self.assertEqual(first.status_code, 302)
+
+        second = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Sonam", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=False,
+        )
+        self.assertEqual(second.status_code, 302)
+
+        third = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Sonam", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=False,
+        )
+        self.assertEqual(third.status_code, 429)
+        self.assertIn(b"Too many booking attempts", third.data)
 
     def test_booking_validation_tickets_too_high(self):
         event_id = self._create_event()
@@ -866,6 +930,19 @@ class EventManagementAppTests(unittest.TestCase):
 
         self.assertTrue(config["IS_PRODUCTION"])
         self.assertTrue(config["DATABASE"].endswith("events.db"))
+
+    def test_load_runtime_config_rejects_invalid_rate_limit_window(self):
+        with patch.dict(
+            os.environ,
+            {
+                "RATE_LIMIT_WINDOW_SECONDS": "0",
+                "ADMIN_USERNAME": "admin",
+                "ADMIN_PASSWORD": "admin123",
+            },
+            clear=False,
+        ):
+            with self.assertRaises(RuntimeError):
+                load_runtime_config()
 
 
 if __name__ == "__main__":

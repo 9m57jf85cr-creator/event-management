@@ -58,6 +58,15 @@ In production mode, the app:
 - enables secure session cookies (`SESSION_COOKIE_SECURE=True`)
 - keeps `HttpOnly` and `SameSite=Lax` session cookie protections
 - applies baseline security headers (CSP, frame, content-type, referrer)
+- enforces rate limits for login and booking POST requests
+
+Optional rate limit tuning:
+
+```bash
+export RATE_LIMIT_WINDOW_SECONDS=60
+export RATE_LIMIT_LOGIN_MAX_REQUESTS=10
+export RATE_LIMIT_BOOKING_MAX_REQUESTS=30
+```
 
 ## Alternative Run Command
 

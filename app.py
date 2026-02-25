@@ -8,6 +8,7 @@ import os
 import secrets
 import sqlite3
 import string
+import time
 
 DEFAULT_SECRET_KEY = "dev-secret-key-change-me"
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -56,6 +57,9 @@ def load_runtime_config():
     admin_username = os.getenv("ADMIN_USERNAME", "admin").strip()
     admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
     database = _resolve_database_path(os.getenv("DATABASE", "events.db"))
+    rate_limit_window_seconds = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+    rate_limit_login_max_requests = int(os.getenv("RATE_LIMIT_LOGIN_MAX_REQUESTS", "10"))
+    rate_limit_booking_max_requests = int(os.getenv("RATE_LIMIT_BOOKING_MAX_REQUESTS", "30"))
 
     if not admin_username or not admin_password:
         raise RuntimeError("ADMIN_USERNAME and ADMIN_PASSWORD must be set.")
@@ -63,12 +67,21 @@ def load_runtime_config():
     if is_production and secret_key == DEFAULT_SECRET_KEY:
         raise RuntimeError("SECRET_KEY must be changed in production.")
 
+    if rate_limit_window_seconds <= 0:
+        raise RuntimeError("RATE_LIMIT_WINDOW_SECONDS must be > 0.")
+
+    if rate_limit_login_max_requests <= 0 or rate_limit_booking_max_requests <= 0:
+        raise RuntimeError("Rate limit max request values must be > 0.")
+
     return {
         "SECRET_KEY": secret_key,
         "DATABASE": database,
         "ADMIN_USERNAME": admin_username,
         "ADMIN_PASSWORD": admin_password,
         "IS_PRODUCTION": is_production,
+        "RATE_LIMIT_WINDOW_SECONDS": rate_limit_window_seconds,
+        "RATE_LIMIT_LOGIN_MAX_REQUESTS": rate_limit_login_max_requests,
+        "RATE_LIMIT_BOOKING_MAX_REQUESTS": rate_limit_booking_max_requests,
     }
 
 
@@ -78,6 +91,7 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = app.config["IS_PRODUCTION"]
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
+_rate_limit_state = {}
 
 
 def get_db_connection():
@@ -369,6 +383,39 @@ def _is_valid_reference_code(reference_code):
     return True
 
 
+def _get_client_ip():
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def reset_rate_limit_state():
+    _rate_limit_state.clear()
+
+
+def _check_rate_limit(scope):
+    limit_mapping = {
+        "login": app.config["RATE_LIMIT_LOGIN_MAX_REQUESTS"],
+        "booking": app.config["RATE_LIMIT_BOOKING_MAX_REQUESTS"],
+    }
+    max_requests = limit_mapping[scope]
+    window_seconds = app.config["RATE_LIMIT_WINDOW_SECONDS"]
+    now = time.time()
+    key = (scope, _get_client_ip())
+    bucket = _rate_limit_state.setdefault(key, [])
+
+    min_timestamp = now - window_seconds
+    while bucket and bucket[0] <= min_timestamp:
+        bucket.pop(0)
+
+    if len(bucket) >= max_requests:
+        return False
+
+    bucket.append(now)
+    return True
+
+
 def _generate_csrf_token():
     token = session.get("_csrf_token")
     if not token:
@@ -391,6 +438,21 @@ def protect_from_csrf():
     received = request.form.get("csrf_token", "")
     if not expected or not received or not secrets.compare_digest(expected, received):
         abort(400, description="Invalid CSRF token.")
+
+
+@app.before_request
+def enforce_rate_limits():
+    if request.method != "POST":
+        return
+
+    if request.endpoint == "login":
+        if not _check_rate_limit("login"):
+            abort(429, description="Too many login attempts. Please try again later.")
+        return
+
+    if request.endpoint == "book_event":
+        if not _check_rate_limit("booking"):
+            abort(429, description="Too many booking attempts. Please try again later.")
 
 
 @app.after_request
