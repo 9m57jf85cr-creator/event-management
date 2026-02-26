@@ -1408,6 +1408,54 @@ def cancel_booking(booking_id):
     return redirect(url_for("bookings"))
 
 
+@app.route("/bookings/resend_confirmation/<int:booking_id>", methods=["POST"])
+@admin_required
+def resend_booking_confirmation(booking_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            b.id,
+            b.user_name,
+            b.user_email,
+            b.reference_code,
+            b.tickets,
+            e.name,
+            e.date,
+            e.location
+        FROM bookings b
+        JOIN events e ON e.id = b.event_id
+        WHERE b.id = ?
+        """,
+        (booking_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if row is None:
+        flash("Booking not found.", "error")
+        return redirect(url_for("bookings"))
+
+    status, error_message = _send_booking_confirmation_email(
+        to_email=row[2],
+        user_name=row[1],
+        event_name=row[5],
+        event_date=row[6],
+        event_location=row[7],
+        tickets=row[4],
+        reference_code=row[3],
+    )
+    _update_booking_confirmation_email_status(booking_id=row[0], status=status, error_message=error_message)
+
+    if status == "sent":
+        flash("Confirmation email sent.", "success")
+    elif status == "failed":
+        flash("Confirmation email failed to send.", "error")
+    else:
+        flash("Confirmation email skipped because SMTP is disabled.", "error")
+    return redirect(url_for("bookings"))
+
+
 @app.route("/bookings/export.csv")
 @admin_required
 def export_bookings_csv():

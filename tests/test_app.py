@@ -1053,6 +1053,119 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Booking not found.", response.data)
 
+    @patch("app.smtplib.SMTP")
+    def test_resend_confirmation_email_success(self, mock_smtp):
+        event_id = self._create_event(name="Resend Event", date="2026-08-02", location="Denver")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Nima", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        with sqlite3.connect(self.db_path) as conn:
+            booking_id = conn.execute("SELECT id FROM bookings WHERE event_id = ?", (event_id,)).fetchone()[0]
+
+        app.config["SMTP_ENABLED"] = True
+        response = self._post_with_csrf(
+            f"/bookings/resend_confirmation/{booking_id}",
+            {},
+            get_path="/bookings",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Confirmation email sent.", response.data)
+
+        smtp_client = mock_smtp.return_value.__enter__.return_value
+        smtp_client.send_message.assert_called()
+
+        with sqlite3.connect(self.db_path) as conn:
+            status = conn.execute(
+                "SELECT confirmation_email_status FROM bookings WHERE id = ?",
+                (booking_id,),
+            ).fetchone()[0]
+        self.assertEqual(status, "sent")
+
+    @patch("app.smtplib.SMTP", side_effect=RuntimeError("SMTP unavailable"))
+    def test_resend_confirmation_email_failure(self, _mock_smtp):
+        event_id = self._create_event(name="Resend Fail Event", date="2026-08-03", location="Denver")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Nima", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            booking_id = conn.execute("SELECT id FROM bookings WHERE event_id = ?", (event_id,)).fetchone()[0]
+
+        app.config["SMTP_ENABLED"] = True
+        response = self._post_with_csrf(
+            f"/bookings/resend_confirmation/{booking_id}",
+            {},
+            get_path="/bookings",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Confirmation email failed to send.", response.data)
+
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT confirmation_email_status, confirmation_email_error FROM bookings WHERE id = ?",
+                (booking_id,),
+            ).fetchone()
+        self.assertEqual(row[0], "failed")
+        self.assertIn("SMTP unavailable", row[1])
+
+    def test_resend_confirmation_email_skipped_when_smtp_disabled(self):
+        event_id = self._create_event(name="Resend Skip Event", date="2026-08-04", location="Denver")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Nima", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            booking_id = conn.execute("SELECT id FROM bookings WHERE event_id = ?", (event_id,)).fetchone()[0]
+
+        app.config["SMTP_ENABLED"] = False
+        response = self._post_with_csrf(
+            f"/bookings/resend_confirmation/{booking_id}",
+            {},
+            get_path="/bookings",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Confirmation email skipped because SMTP is disabled.", response.data)
+
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT confirmation_email_status, confirmation_email_error FROM bookings WHERE id = ?",
+                (booking_id,),
+            ).fetchone()
+        self.assertEqual(row[0], "skipped")
+        self.assertIn("SMTP is disabled.", row[1])
+
+    def test_resend_confirmation_email_requires_admin(self):
+        event_id = self._create_event(name="Resend Protected", date="2026-08-05", location="Denver")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Nima", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        with sqlite3.connect(self.db_path) as conn:
+            booking_id = conn.execute("SELECT id FROM bookings WHERE event_id = ?", (event_id,)).fetchone()[0]
+
+        self._logout_admin()
+        response = self._post_with_csrf(
+            f"/bookings/resend_confirmation/{booking_id}",
+            {},
+            get_path="/login",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Admin login required.", response.data)
+
     def test_export_bookings_csv(self):
         event_id = self._create_event(name="Expo", date="2026-09-10", location="NYC")
         self._post_with_csrf(
