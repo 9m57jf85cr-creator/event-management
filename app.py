@@ -298,7 +298,7 @@ def _parse_booking_sort():
 
 def _parse_booking_audit_filters():
     action = request.args.get("action", "").strip().lower()
-    if action not in {"", "cancel"}:
+    if action not in {"", "cancel", "create"}:
         action = ""
 
     actor = request.args.get("actor", "").strip().lower()
@@ -922,8 +922,16 @@ def book_event(event_id):
             "INSERT INTO bookings (event_id, user_name, tickets, reference_code) VALUES (?, ?, ?, ?)",
             (event_id, name, tickets, _generate_booking_reference(cursor)),
         )
-        cursor.execute("SELECT reference_code FROM bookings WHERE id = last_insert_rowid()")
+        booking_id = cursor.lastrowid
+        cursor.execute("SELECT reference_code FROM bookings WHERE id = ?", (booking_id,))
         booking_reference = cursor.fetchone()[0]
+        _log_booking_audit(
+            cursor=cursor,
+            booking_id=booking_id,
+            reference_code=booking_reference,
+            action="create",
+            actor="self_service",
+        )
         conn.commit()
         conn.close()
 
@@ -1229,7 +1237,7 @@ def main():
     else:
         debug = not app.config["IS_PRODUCTION"]
 
-    app.run(debug=debug, host=host, port=port)
+    app.run(debug=debug, host=host, port=port, use_reloader=False)
 
 
 if __name__ == "__main__":
