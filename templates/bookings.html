@@ -5,7 +5,7 @@
 {% block content %}
 <h1>All Bookings</h1>
 <form action="{{ url_for('bookings') }}" method="GET" class="row" style="margin-bottom: 10px;">
-    <input type="text" name="q" value="{{ q | default('', true) }}" placeholder="Search by event or user">
+    <input type="text" name="q" value="{{ q | default('', true) }}" placeholder="Search by event, user, email, or phone">
     <select name="sort_by">
         <option value="created_at" {% if sort_by == "created_at" %}selected{% endif %}>Sort: Created At</option>
         <option value="event_name" {% if sort_by == "event_name" %}selected{% endif %}>Sort: Event Name</option>
@@ -24,6 +24,8 @@
     <div class="card">
         <p><strong>Event:</strong> {{ booking.event_name }}</p>
         <p><strong>User:</strong> {{ booking.user_name }}</p>
+        <p><strong>Email:</strong> {{ booking.user_email }}</p>
+        <p><strong>Phone:</strong> {{ booking.user_phone }}</p>
         <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
         <p><strong>Reference Code:</strong> {{ booking.reference_code }}</p>
         <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>

@@ -123,12 +123,21 @@ source .venv/bin/activate
 python -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
+Quick smoke test:
+
+```bash
+cd /Users/sonamchosket/Desktop/event-management
+source .venv/bin/activate
+python -m unittest tests.test_smoke -v
+```
+
 ## Make Targets
 
 ```bash
 cd /Users/sonamchosket/Desktop/event-management
 source .venv/bin/activate
 make lint
+make smoke
 make test
 make run
 ```

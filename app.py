@@ -5,6 +5,7 @@ from functools import wraps
 import csv
 import io
 import os
+import re
 import secrets
 import sqlite3
 import string
@@ -15,6 +16,8 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 MAX_EVENT_NAME_LENGTH = 120
 MAX_LOCATION_LENGTH = 120
 MAX_BOOKING_NAME_LENGTH = 80
+MAX_BOOKING_EMAIL_LENGTH = 254
+MAX_BOOKING_PHONE_LENGTH = 20
 MAX_TICKETS = 100
 MAX_EVENT_CAPACITY = 5000
 BOOKING_REFERENCE_LENGTH = 10
@@ -115,13 +118,15 @@ def _migrate_bookings_table(cursor):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id INTEGER NOT NULL,
             user_name TEXT NOT NULL,
+            user_email TEXT NOT NULL DEFAULT '',
+            user_phone TEXT NOT NULL DEFAULT '',
             tickets INTEGER NOT NULL,
             FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE
         )
     """)
     cursor.execute("""
-        INSERT INTO bookings_new (id, event_id, user_name, tickets)
-        SELECT b.id, b.event_id, b.user_name, b.tickets
+        INSERT INTO bookings_new (id, event_id, user_name, user_email, user_phone, tickets)
+        SELECT b.id, b.event_id, b.user_name, '', '', b.tickets
         FROM bookings b
         JOIN events e ON e.id = b.event_id
     """)
@@ -180,6 +185,15 @@ def _ensure_events_capacity(cursor):
     cursor.execute(
         f"UPDATE events SET capacity = {MAX_TICKETS} WHERE capacity IS NULL OR capacity <= 0"
     )
+
+
+def _ensure_bookings_contact_fields(cursor):
+    cursor.execute("PRAGMA table_info(bookings)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "user_email" not in columns:
+        cursor.execute("ALTER TABLE bookings ADD COLUMN user_email TEXT NOT NULL DEFAULT ''")
+    if "user_phone" not in columns:
+        cursor.execute("ALTER TABLE bookings ADD COLUMN user_phone TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_booking_audit_table(cursor):
@@ -436,6 +450,51 @@ def _is_valid_booking_name(name):
     return True
 
 
+def _is_valid_booking_email(email):
+    if not email:
+        flash("Email is required.", "error")
+        return False
+
+    if len(email) > MAX_BOOKING_EMAIL_LENGTH:
+        flash(f"Email cannot exceed {MAX_BOOKING_EMAIL_LENGTH} characters.", "error")
+        return False
+
+    if any(ord(ch) < 32 for ch in email):
+        flash("Email contains invalid characters.", "error")
+        return False
+
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        flash("Enter a valid email address.", "error")
+        return False
+
+    return True
+
+
+def _is_valid_booking_phone(phone):
+    if not phone:
+        flash("Phone number is required.", "error")
+        return False
+
+    if len(phone) > MAX_BOOKING_PHONE_LENGTH:
+        flash(f"Phone number cannot exceed {MAX_BOOKING_PHONE_LENGTH} characters.", "error")
+        return False
+
+    if any(ord(ch) < 32 for ch in phone):
+        flash("Phone number contains invalid characters.", "error")
+        return False
+
+    if not re.fullmatch(r"[0-9+\-\s()]+", phone):
+        flash("Enter a valid phone number.", "error")
+        return False
+
+    digit_count = sum(ch.isdigit() for ch in phone)
+    if digit_count < 7:
+        flash("Enter a valid phone number.", "error")
+        return False
+
+    return True
+
+
 def _is_valid_reference_code(reference_code):
     if not reference_code:
         flash("Booking reference code is required.", "error")
@@ -607,6 +666,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id INTEGER NOT NULL,
             user_name TEXT NOT NULL,
+            user_email TEXT NOT NULL DEFAULT '',
+            user_phone TEXT NOT NULL DEFAULT '',
             tickets INTEGER NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             reference_code TEXT UNIQUE,
@@ -617,6 +678,7 @@ def init_db():
     _migrate_bookings_table(cursor)
     _ensure_bookings_created_at(cursor)
     _ensure_bookings_reference_code(cursor)
+    _ensure_bookings_contact_fields(cursor)
     _ensure_events_capacity(cursor)
     _ensure_booking_audit_table(cursor)
     _ensure_request_rate_limit_table(cursor)
@@ -868,9 +930,17 @@ def book_event(event_id):
 
     if request.method == "POST":
         name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip()
+        phone = request.form.get("phone", "").strip()
         tickets_raw = request.form.get("tickets", "").strip()
 
         if not _is_valid_booking_name(name):
+            return redirect(url_for("book_event", event_id=event_id))
+
+        if not _is_valid_booking_email(email):
+            return redirect(url_for("book_event", event_id=event_id))
+
+        if not _is_valid_booking_phone(phone):
             return redirect(url_for("book_event", event_id=event_id))
 
         try:
@@ -919,8 +989,11 @@ def book_event(event_id):
             return redirect(url_for("book_event", event_id=event_id))
 
         cursor.execute(
-            "INSERT INTO bookings (event_id, user_name, tickets, reference_code) VALUES (?, ?, ?, ?)",
-            (event_id, name, tickets, _generate_booking_reference(cursor)),
+            """
+            INSERT INTO bookings (event_id, user_name, user_email, user_phone, tickets, reference_code)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (event_id, name, email, phone, tickets, _generate_booking_reference(cursor)),
         )
         booking_id = cursor.lastrowid
         cursor.execute("SELECT reference_code FROM bookings WHERE id = ?", (booking_id,))
@@ -966,7 +1039,7 @@ def my_bookings():
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT b.id, e.name, b.user_name, b.tickets, b.created_at, b.reference_code
+                SELECT b.id, e.name, b.user_name, b.user_email, b.user_phone, b.tickets, b.created_at, b.reference_code
                 FROM bookings b
                 JOIN events e ON e.id = b.event_id
                 WHERE b.reference_code = ?
@@ -981,9 +1054,11 @@ def my_bookings():
                     "id": row[0],
                     "event_name": row[1],
                     "user_name": row[2],
-                    "tickets": row[3],
-                    "created_at": row[4],
-                    "reference_code": row[5],
+                    "user_email": row[3],
+                    "user_phone": row[4],
+                    "tickets": row[5],
+                    "created_at": row[6],
+                    "reference_code": row[7],
                 }
                 for row in rows
             ]
@@ -1046,9 +1121,9 @@ def bookings():
     where_clause = ""
     params = []
     if query:
-        where_clause = "WHERE e.name LIKE ? OR b.user_name LIKE ?"
+        where_clause = "WHERE e.name LIKE ? OR b.user_name LIKE ? OR b.user_email LIKE ? OR b.user_phone LIKE ?"
         pattern = f"%{query}%"
-        params = [pattern, pattern]
+        params = [pattern, pattern, pattern, pattern]
 
     cursor.execute(
         f"""
@@ -1067,7 +1142,7 @@ def bookings():
 
     cursor.execute(
         f"""
-        SELECT b.id, e.name, b.user_name, b.tickets, b.created_at, b.reference_code
+        SELECT b.id, e.name, b.user_name, b.user_email, b.user_phone, b.tickets, b.created_at, b.reference_code
         FROM bookings b
         JOIN events e ON e.id = b.event_id
         {where_clause}
@@ -1083,9 +1158,11 @@ def bookings():
             "id": row[0],
             "event_name": row[1],
             "user_name": row[2],
-            "tickets": row[3],
-            "created_at": row[4],
-            "reference_code": row[5],
+            "user_email": row[3],
+            "user_phone": row[4],
+            "tickets": row[5],
+            "created_at": row[6],
+            "reference_code": row[7],
         }
         for row in booking_rows
     ]
@@ -1136,13 +1213,13 @@ def export_bookings_csv():
     where_clause = ""
     params = []
     if query:
-        where_clause = "WHERE e.name LIKE ? OR b.user_name LIKE ?"
+        where_clause = "WHERE e.name LIKE ? OR b.user_name LIKE ? OR b.user_email LIKE ? OR b.user_phone LIKE ?"
         pattern = f"%{query}%"
-        params = [pattern, pattern]
+        params = [pattern, pattern, pattern, pattern]
 
     cursor.execute(
         f"""
-        SELECT b.id, e.name, b.user_name, b.tickets, b.created_at, b.reference_code
+        SELECT b.id, e.name, b.user_name, b.user_email, b.user_phone, b.tickets, b.created_at, b.reference_code
         FROM bookings b
         JOIN events e ON e.id = b.event_id
         {where_clause}
@@ -1155,7 +1232,18 @@ def export_bookings_csv():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["booking_id", "event_name", "user_name", "tickets", "created_at", "reference_code"])
+    writer.writerow(
+        [
+            "booking_id",
+            "event_name",
+            "user_name",
+            "user_email",
+            "user_phone",
+            "tickets",
+            "created_at",
+            "reference_code",
+        ]
+    )
     writer.writerows(rows)
 
     response = make_response(output.getvalue())

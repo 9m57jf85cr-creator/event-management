@@ -85,7 +85,13 @@ class SmokeFlowTests(unittest.TestCase):
         token = self._csrf_from_path(f"/book/{event_id}")
         response = self.client.post(
             f"/book/{event_id}",
-            data={"name": "Smoke User", "tickets": "2", "csrf_token": token},
+            data={
+                "name": "Smoke User",
+                "email": "smoke@example.com",
+                "phone": "+1 555 333 7777",
+                "tickets": "2",
+                "csrf_token": token,
+            },
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)

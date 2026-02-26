@@ -43,6 +43,9 @@ class EventManagementAppTests(unittest.TestCase):
     def _post_with_csrf(self, post_path, data, get_path=None, follow_redirects=True):
         token = self._extract_csrf_token(get_path or post_path)
         payload = dict(data)
+        if post_path.startswith("/book/"):
+            payload.setdefault("email", "user@example.com")
+            payload.setdefault("phone", "+1 555 123 4567")
         payload["csrf_token"] = token
         return self.client.post(post_path, data=payload, follow_redirects=follow_redirects)
 
@@ -667,6 +670,28 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Name contains invalid characters.", response.data)
 
+    def test_booking_validation_invalid_email(self):
+        event_id = self._create_event()
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "User", "email": "bad-email", "phone": "+1 555 123 4567", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Enter a valid email address.", response.data)
+
+    def test_booking_validation_invalid_phone(self):
+        event_id = self._create_event()
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "User", "email": "user@example.com", "phone": "12", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Enter a valid phone number.", response.data)
+
     def test_my_bookings_page_loads_for_non_admin(self):
         self._logout_admin()
         response = self.client.get("/my_bookings")
@@ -696,6 +721,8 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Community Meetup", response.data)
         self.assertIn(b"Alex", response.data)
+        self.assertIn(b"user@example.com", response.data)
+        self.assertIn(b"+1 555 123 4567", response.data)
         self.assertNotIn(b"Nima", response.data)
         self.assertIn(reference_code.encode("utf-8"), response.data)
 
@@ -797,6 +824,8 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Conference", response.data)
         self.assertIn(b"Alex", response.data)
+        self.assertIn(b"user@example.com", response.data)
+        self.assertIn(b"+1 555 123 4567", response.data)
         self.assertIn(b"2", response.data)
         self.assertIn(b"Booked At:", response.data)
 
@@ -936,9 +965,14 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.headers.get("Content-Type"), "text/csv; charset=utf-8")
         self.assertIn("attachment; filename=bookings_report.csv", response.headers.get("Content-Disposition", ""))
         csv_text = response.data.decode("utf-8")
-        self.assertIn("booking_id,event_name,user_name,tickets,created_at,reference_code", csv_text)
+        self.assertIn(
+            "booking_id,event_name,user_name,user_email,user_phone,tickets,created_at,reference_code",
+            csv_text,
+        )
         self.assertIn("Expo", csv_text)
         self.assertIn("Chris", csv_text)
+        self.assertIn("user@example.com", csv_text)
+        self.assertIn("+1 555 123 4567", csv_text)
 
     def test_export_bookings_csv_respects_search_filter(self):
         event_a = self._create_event(name="Expo", date="2026-09-10", location="NYC")
