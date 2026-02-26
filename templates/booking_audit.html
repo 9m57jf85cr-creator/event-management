@@ -8,6 +8,7 @@
     <select name="action">
         <option value="" {% if not filters.action %}selected{% endif %}>Action: All</option>
         <option value="cancel" {% if filters.action == "cancel" %}selected{% endif %}>Action: Cancel</option>
+        <option value="create" {% if filters.action == "create" %}selected{% endif %}>Action: Create</option>
     </select>
     <select name="actor">
         <option value="" {% if not filters.actor %}selected{% endif %}>Actor: All</option>
