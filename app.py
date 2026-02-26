@@ -3,10 +3,12 @@ from datetime import datetime
 from datetime import timedelta
 from functools import wraps
 import csv
+from email.message import EmailMessage
 import io
 import os
 import re
 import secrets
+import smtplib
 import sqlite3
 import string
 import time
@@ -54,6 +56,13 @@ def _resolve_database_path(database_value):
     return os.path.join(PROJECT_ROOT, database_path)
 
 
+def _env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def load_runtime_config():
     is_production = _is_production_environment()
     secret_key = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
@@ -64,6 +73,13 @@ def load_runtime_config():
     rate_limit_window_seconds = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
     rate_limit_login_max_requests = int(os.getenv("RATE_LIMIT_LOGIN_MAX_REQUESTS", "10"))
     rate_limit_booking_max_requests = int(os.getenv("RATE_LIMIT_BOOKING_MAX_REQUESTS", "30"))
+    smtp_enabled = _env_bool("SMTP_ENABLED", False)
+    smtp_host = os.getenv("SMTP_HOST", "").strip()
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME", "").strip()
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_use_tls = _env_bool("SMTP_USE_TLS", True)
+    smtp_from_email = os.getenv("SMTP_FROM_EMAIL", "no-reply@localhost").strip()
 
     if not admin_username or not admin_password:
         raise RuntimeError("ADMIN_USERNAME and ADMIN_PASSWORD must be set.")
@@ -80,6 +96,15 @@ def load_runtime_config():
     if rate_limit_login_max_requests <= 0 or rate_limit_booking_max_requests <= 0:
         raise RuntimeError("Rate limit max request values must be > 0.")
 
+    if smtp_enabled and not smtp_host:
+        raise RuntimeError("SMTP_HOST must be set when SMTP_ENABLED is true.")
+
+    if smtp_port <= 0:
+        raise RuntimeError("SMTP_PORT must be > 0.")
+
+    if smtp_enabled and not smtp_from_email:
+        raise RuntimeError("SMTP_FROM_EMAIL must be set when SMTP_ENABLED is true.")
+
     return {
         "SECRET_KEY": secret_key,
         "DATABASE": database,
@@ -90,6 +115,13 @@ def load_runtime_config():
         "RATE_LIMIT_WINDOW_SECONDS": rate_limit_window_seconds,
         "RATE_LIMIT_LOGIN_MAX_REQUESTS": rate_limit_login_max_requests,
         "RATE_LIMIT_BOOKING_MAX_REQUESTS": rate_limit_booking_max_requests,
+        "SMTP_ENABLED": smtp_enabled,
+        "SMTP_HOST": smtp_host,
+        "SMTP_PORT": smtp_port,
+        "SMTP_USERNAME": smtp_username,
+        "SMTP_PASSWORD": smtp_password,
+        "SMTP_USE_TLS": smtp_use_tls,
+        "SMTP_FROM_EMAIL": smtp_from_email,
     }
 
 
@@ -512,6 +544,71 @@ def _is_valid_reference_code(reference_code):
     return True
 
 
+def _send_notification_email(to_email, subject, body_lines):
+    if not app.config.get("SMTP_ENABLED"):
+        return False
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = app.config["SMTP_FROM_EMAIL"]
+    message["To"] = to_email
+    message.set_content("\n".join(body_lines))
+
+    try:
+        with smtplib.SMTP(
+            app.config["SMTP_HOST"],
+            app.config["SMTP_PORT"],
+            timeout=10,
+        ) as smtp_client:
+            if app.config["SMTP_USE_TLS"]:
+                smtp_client.starttls()
+
+            if app.config["SMTP_USERNAME"] or app.config["SMTP_PASSWORD"]:
+                smtp_client.login(
+                    app.config["SMTP_USERNAME"],
+                    app.config["SMTP_PASSWORD"],
+                )
+
+            smtp_client.send_message(message)
+            return True
+    except Exception:
+        app.logger.exception("Failed to send notification email.")
+        return False
+
+
+def _send_booking_confirmation_email(to_email, user_name, event_name, event_date, event_location, tickets, reference_code):
+    return _send_notification_email(
+        to_email=to_email,
+        subject=f"Booking Confirmed: {event_name}",
+        body_lines=[
+            f"Hi {user_name},",
+            "",
+            "Your booking is confirmed.",
+            f"Event: {event_name}",
+            f"Date: {event_date}",
+            f"Location: {event_location}",
+            f"Tickets: {tickets}",
+            f"Reference Code: {reference_code}",
+            "",
+            "Thank you.",
+        ],
+    )
+
+
+def _send_booking_cancellation_email(to_email, user_name, event_name, reference_code):
+    return _send_notification_email(
+        to_email=to_email,
+        subject=f"Booking Cancelled: {event_name}",
+        body_lines=[
+            f"Hi {user_name},",
+            "",
+            "Your booking has been cancelled.",
+            f"Event: {event_name}",
+            f"Reference Code: {reference_code}",
+        ],
+    )
+
+
 def _get_client_ip():
     forwarded_for = request.headers.get("X-Forwarded-For", "")
     if forwarded_for:
@@ -914,11 +1011,11 @@ def book_event(event_id):
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT e.id, e.name, e.capacity, COALESCE(SUM(b.tickets), 0) AS total_tickets
+        SELECT e.id, e.name, e.date, e.location, e.capacity, COALESCE(SUM(b.tickets), 0) AS total_tickets
         FROM events e
         LEFT JOIN bookings b ON e.id = b.event_id
         WHERE e.id = ?
-        GROUP BY e.id, e.name, e.capacity
+        GROUP BY e.id, e.name, e.date, e.location, e.capacity
         """,
         (event_id,),
     )
@@ -933,6 +1030,7 @@ def book_event(event_id):
         email = request.form.get("email", "").strip()
         phone = request.form.get("phone", "").strip()
         tickets_raw = request.form.get("tickets", "").strip()
+        event_name = event[1]
 
         if not _is_valid_booking_name(name):
             return redirect(url_for("book_event", event_id=event_id))
@@ -1007,6 +1105,15 @@ def book_event(event_id):
         )
         conn.commit()
         conn.close()
+        _send_booking_confirmation_email(
+            to_email=email,
+            user_name=name,
+            event_name=event_name,
+            event_date=event[2],
+            event_location=event[3],
+            tickets=tickets,
+            reference_code=booking_reference,
+        )
 
         flash(
             f"Booking successful. Your reference code: {booking_reference}",
@@ -1014,14 +1121,14 @@ def book_event(event_id):
         )
         return redirect(url_for("home"))
 
-    remaining_tickets = max(event[2] - event[3], 0)
+    remaining_tickets = max(event[4] - event[5], 0)
     return render_template(
         "book.html",
         event={
             "id": event[0],
             "name": event[1],
-            "capacity": event[2],
-            "total_tickets": event[3],
+            "capacity": event[4],
+            "total_tickets": event[5],
             "remaining_tickets": remaining_tickets,
         },
     )
@@ -1083,7 +1190,12 @@ def cancel_my_booking(reference_code):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, reference_code FROM bookings WHERE reference_code = ?",
+        """
+        SELECT b.id, b.reference_code, b.user_name, b.user_email, e.name
+        FROM bookings b
+        JOIN events e ON e.id = b.event_id
+        WHERE b.reference_code = ?
+        """,
         (reference_code,),
     )
     row = cursor.fetchone()
@@ -1102,6 +1214,12 @@ def cancel_my_booking(reference_code):
     )
     conn.commit()
     conn.close()
+    _send_booking_cancellation_email(
+        to_email=row[3],
+        user_name=row[2],
+        event_name=row[4],
+        reference_code=row[1],
+    )
     flash("Your booking was cancelled.", "success")
     return redirect(url_for("my_bookings", ref=reference_code))
 
@@ -1182,7 +1300,15 @@ def bookings():
 def cancel_booking(booking_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, reference_code FROM bookings WHERE id = ?", (booking_id,))
+    cursor.execute(
+        """
+        SELECT b.id, b.reference_code, b.user_name, b.user_email, e.name
+        FROM bookings b
+        JOIN events e ON e.id = b.event_id
+        WHERE b.id = ?
+        """,
+        (booking_id,),
+    )
     booking_row = cursor.fetchone()
     if booking_row is None:
         conn.close()
@@ -1199,6 +1325,12 @@ def cancel_booking(booking_id):
     )
     conn.commit()
     conn.close()
+    _send_booking_cancellation_email(
+        to_email=booking_row[3],
+        user_name=booking_row[2],
+        event_name=booking_row[4],
+        reference_code=booking_row[1],
+    )
     flash("Booking cancelled.", "success")
     return redirect(url_for("bookings"))
 

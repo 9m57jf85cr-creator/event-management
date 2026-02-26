@@ -21,6 +21,7 @@ class SmokeFlowTests(unittest.TestCase):
         app.config["RATE_LIMIT_WINDOW_SECONDS"] = 60
         app.config["RATE_LIMIT_LOGIN_MAX_REQUESTS"] = 10
         app.config["RATE_LIMIT_BOOKING_MAX_REQUESTS"] = 30
+        app.config["SMTP_ENABLED"] = False
         reset_rate_limit_state()
         init_db()
         self.client = app.test_client()

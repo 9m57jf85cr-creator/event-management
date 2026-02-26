@@ -22,6 +22,13 @@ class EventManagementAppTests(unittest.TestCase):
         app.config["RATE_LIMIT_WINDOW_SECONDS"] = 60
         app.config["RATE_LIMIT_LOGIN_MAX_REQUESTS"] = 10
         app.config["RATE_LIMIT_BOOKING_MAX_REQUESTS"] = 30
+        app.config["SMTP_ENABLED"] = False
+        app.config["SMTP_HOST"] = "smtp.test.local"
+        app.config["SMTP_PORT"] = 2525
+        app.config["SMTP_USERNAME"] = ""
+        app.config["SMTP_PASSWORD"] = ""
+        app.config["SMTP_USE_TLS"] = True
+        app.config["SMTP_FROM_EMAIL"] = "no-reply@test.local"
         reset_rate_limit_state()
         init_db()
 
@@ -412,6 +419,29 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertRegex(row[2], r"^[A-Z0-9]{10}$")
         self.assertIn(b"Your reference code:", response.data)
 
+    @patch("app.smtplib.SMTP")
+    def test_booking_confirmation_email_sent_when_smtp_enabled(self, mock_smtp):
+        app.config["SMTP_ENABLED"] = True
+        event_id = self._create_event(name="Email Event", date="2026-08-10", location="Austin")
+
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Sonam", "email": "sonam@example.com", "phone": "+1 555 222 1010", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+
+        smtp_client = mock_smtp.return_value.__enter__.return_value
+        mock_smtp.assert_called_once_with("smtp.test.local", 2525, timeout=10)
+        smtp_client.starttls.assert_called_once()
+        smtp_client.send_message.assert_called_once()
+
+        message = smtp_client.send_message.call_args.args[0]
+        self.assertEqual(message["To"], "sonam@example.com")
+        self.assertIn("Booking Confirmed: Email Event", message["Subject"])
+        self.assertIn("Reference Code:", message.get_content())
+
     def test_booking_validation_error(self):
         event_id = self._create_event()
 
@@ -758,6 +788,34 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(audit_row[1], reference_code)
         self.assertEqual(audit_row[2], "cancel")
         self.assertEqual(audit_row[3], "self_service")
+
+    @patch("app.smtplib.SMTP")
+    def test_my_bookings_cancel_sends_email_when_smtp_enabled(self, mock_smtp):
+        event_id = self._create_event(name="Cancel Email Event", date="2026-06-20", location="NYC")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Chris", "tickets": "2"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        reference_code = self._get_booking_reference(event_id, "Chris")
+
+        app.config["SMTP_ENABLED"] = True
+        self._logout_admin()
+        response = self._post_with_csrf(
+            f"/my_bookings/cancel/{reference_code}",
+            {},
+            get_path=f"/my_bookings?ref={reference_code}",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Your booking was cancelled.", response.data)
+
+        smtp_client = mock_smtp.return_value.__enter__.return_value
+        smtp_client.send_message.assert_called_once()
+        message = smtp_client.send_message.call_args.args[0]
+        self.assertEqual(message["To"], "user@example.com")
+        self.assertIn("Booking Cancelled: Cancel Email Event", message["Subject"])
 
     def test_my_bookings_cancel_rejects_wrong_name(self):
         event_id = self._create_event(name="Expo", date="2026-06-20", location="NYC")

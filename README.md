@@ -68,6 +68,18 @@ export RATE_LIMIT_LOGIN_MAX_REQUESTS=10
 export RATE_LIMIT_BOOKING_MAX_REQUESTS=30
 ```
 
+Optional email notifications for booking create/cancel:
+
+```bash
+export SMTP_ENABLED=true
+export SMTP_HOST='smtp.your-provider.com'
+export SMTP_PORT=587
+export SMTP_USERNAME='smtp-user'
+export SMTP_PASSWORD='smtp-pass'
+export SMTP_USE_TLS=true
+export SMTP_FROM_EMAIL='no-reply@your-domain.com'
+```
+
 ## Events API
 
 Set an API key:
