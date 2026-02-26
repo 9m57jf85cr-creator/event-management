@@ -952,6 +952,25 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn(b"Alex", response.data)
         self.assertNotIn(b"Nima", response.data)
 
+    def test_bookings_status_filter(self):
+        event_id = self._create_event(name="Status Filter Event", date="2026-07-10", location="Remote")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "StatusUser", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        app.config["SMTP_ENABLED"] = True
+
+        response = self.client.get("/bookings?status=skipped")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"StatusUser", response.data)
+        self.assertIn(b'value="skipped" selected', response.data)
+
+        response = self.client.get("/bookings?status=sent")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"StatusUser", response.data)
+
     def test_bookings_pagination_controls(self):
         event_id = self._create_event(name="Paged Event", date="2026-07-01", location="Remote")
         for i in range(11):
@@ -1210,6 +1229,25 @@ class EventManagementAppTests(unittest.TestCase):
         csv_text = response.data.decode("utf-8")
         self.assertIn("Chris", csv_text)
         self.assertNotIn("Alex", csv_text)
+
+    def test_export_bookings_csv_respects_status_filter(self):
+        event_id = self._create_event(name="CSV Status Event", date="2026-09-12", location="LA")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "CSVUser", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        response = self.client.get("/bookings/export.csv?status=skipped")
+        self.assertEqual(response.status_code, 200)
+        csv_text = response.data.decode("utf-8")
+        self.assertIn("CSVUser", csv_text)
+
+        response = self.client.get("/bookings/export.csv?status=sent")
+        self.assertEqual(response.status_code, 200)
+        csv_text = response.data.decode("utf-8")
+        self.assertNotIn("CSVUser", csv_text)
 
     def test_export_bookings_csv_respects_sort_order(self):
         event_id = self._create_event(name="Sort CSV Event", date="2026-09-12", location="LA")

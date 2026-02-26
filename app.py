@@ -366,6 +366,13 @@ def _parse_booking_sort():
     return sort_by, sort_dir, order_by_sql
 
 
+def _parse_booking_status_filter():
+    status = request.args.get("status", "").strip().lower()
+    if status not in {"", "sent", "failed", "skipped", "pending"}:
+        return ""
+    return status
+
+
 def _parse_booking_audit_filters():
     action = request.args.get("action", "").strip().lower()
     if action not in {"", "cancel", "create"}:
@@ -1289,6 +1296,7 @@ def cancel_my_booking(reference_code):
 @admin_required
 def bookings():
     query = request.args.get("q", "").strip()
+    status_filter = _parse_booking_status_filter()
     sort_by, sort_dir, order_by_sql = _parse_booking_sort()
     page = request.args.get("page", default=1, type=int)
     per_page = 10
@@ -1297,12 +1305,21 @@ def bookings():
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    where_clause = ""
+    where_parts = []
     params = []
     if query:
-        where_clause = "WHERE e.name LIKE ? OR b.user_name LIKE ? OR b.user_email LIKE ? OR b.user_phone LIKE ?"
+        where_parts.append(
+            "(e.name LIKE ? OR b.user_name LIKE ? OR b.user_email LIKE ? OR b.user_phone LIKE ?)"
+        )
         pattern = f"%{query}%"
-        params = [pattern, pattern, pattern, pattern]
+        params.extend([pattern, pattern, pattern, pattern])
+    if status_filter:
+        where_parts.append("b.confirmation_email_status = ?")
+        params.append(status_filter)
+
+    where_clause = ""
+    if where_parts:
+        where_clause = "WHERE " + " AND ".join(where_parts)
 
     cursor.execute(
         f"""
@@ -1361,6 +1378,7 @@ def bookings():
         "bookings.html",
         booking_data=booking_data,
         q=query,
+        status_filter=status_filter,
         page=page,
         total_pages=total_pages,
         sort_by=sort_by,
@@ -1460,15 +1478,25 @@ def resend_booking_confirmation(booking_id):
 @admin_required
 def export_bookings_csv():
     query = request.args.get("q", "").strip()
+    status_filter = _parse_booking_status_filter()
     _, _, order_by_sql = _parse_booking_sort()
     conn = get_db_connection()
     cursor = conn.cursor()
-    where_clause = ""
+    where_parts = []
     params = []
     if query:
-        where_clause = "WHERE e.name LIKE ? OR b.user_name LIKE ? OR b.user_email LIKE ? OR b.user_phone LIKE ?"
+        where_parts.append(
+            "(e.name LIKE ? OR b.user_name LIKE ? OR b.user_email LIKE ? OR b.user_phone LIKE ?)"
+        )
         pattern = f"%{query}%"
-        params = [pattern, pattern, pattern, pattern]
+        params.extend([pattern, pattern, pattern, pattern])
+    if status_filter:
+        where_parts.append("b.confirmation_email_status = ?")
+        params.append(status_filter)
+
+    where_clause = ""
+    if where_parts:
+        where_clause = "WHERE " + " AND ".join(where_parts)
 
     cursor.execute(
         f"""

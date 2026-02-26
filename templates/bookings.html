@@ -6,6 +6,13 @@
 <h1>All Bookings</h1>
 <form action="{{ url_for('bookings') }}" method="GET" class="row" style="margin-bottom: 10px;">
     <input type="text" name="q" value="{{ q | default('', true) }}" placeholder="Search by event, user, email, or phone">
+    <select name="status">
+        <option value="" {% if not status_filter %}selected{% endif %}>Email: All</option>
+        <option value="sent" {% if status_filter == "sent" %}selected{% endif %}>Email: Sent</option>
+        <option value="failed" {% if status_filter == "failed" %}selected{% endif %}>Email: Failed</option>
+        <option value="skipped" {% if status_filter == "skipped" %}selected{% endif %}>Email: Skipped</option>
+        <option value="pending" {% if status_filter == "pending" %}selected{% endif %}>Email: Pending</option>
+    </select>
     <select name="sort_by">
         <option value="created_at" {% if sort_by == "created_at" %}selected{% endif %}>Sort: Created At</option>
         <option value="event_name" {% if sort_by == "event_name" %}selected{% endif %}>Sort: Event Name</option>
@@ -18,7 +25,7 @@
     </select>
     <button type="submit">Search</button>
 </form>
-<p><a href="{{ url_for('export_bookings_csv', q=q, sort_by=sort_by, sort_dir=sort_dir) }}">Export CSV Report</a></p>
+<p><a href="{{ url_for('export_bookings_csv', q=q, status=status_filter, sort_by=sort_by, sort_dir=sort_dir) }}">Export CSV Report</a></p>
 
 {% for booking in booking_data | default([], true) %}
     <div class="card">
@@ -57,11 +64,11 @@
 {% if total_pages > 1 %}
     <div class="actions">
         {% if page > 1 %}
-            <a href="{{ url_for('bookings', q=q, sort_by=sort_by, sort_dir=sort_dir, page=page-1) }}">Prev</a>
+            <a href="{{ url_for('bookings', q=q, status=status_filter, sort_by=sort_by, sort_dir=sort_dir, page=page-1) }}">Prev</a>
         {% endif %}
         <span class="muted">Page {{ page }} of {{ total_pages }}</span>
         {% if page < total_pages %}
-            <a href="{{ url_for('bookings', q=q, sort_by=sort_by, sort_dir=sort_dir, page=page+1) }}">Next</a>
+            <a href="{{ url_for('bookings', q=q, status=status_filter, sort_by=sort_by, sort_dir=sort_dir, page=page+1) }}">Next</a>
         {% endif %}
     </div>
 {% endif %}
