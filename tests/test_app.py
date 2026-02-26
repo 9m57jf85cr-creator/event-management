@@ -410,13 +410,19 @@ class EventManagementAppTests(unittest.TestCase):
 
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(
-                "SELECT user_name, tickets, reference_code FROM bookings WHERE event_id = ?",
+                """
+                SELECT user_name, tickets, reference_code, confirmation_email_status, confirmation_email_error
+                FROM bookings
+                WHERE event_id = ?
+                """,
                 (event_id,),
             ).fetchone()
 
         self.assertEqual(row[0], "Sonam")
         self.assertEqual(row[1], 3)
         self.assertRegex(row[2], r"^[A-Z0-9]{10}$")
+        self.assertEqual(row[3], "skipped")
+        self.assertEqual(row[4], "SMTP is disabled.")
         self.assertIn(b"Your reference code:", response.data)
 
     @patch("app.smtplib.SMTP")
@@ -441,6 +447,43 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(message["To"], "sonam@example.com")
         self.assertIn("Booking Confirmed: Email Event", message["Subject"])
         self.assertIn("Reference Code:", message.get_content())
+
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT confirmation_email_status, confirmation_email_error
+                FROM bookings
+                WHERE event_id = ?
+                """,
+                (event_id,),
+            ).fetchone()
+        self.assertEqual(row[0], "sent")
+        self.assertEqual(row[1], "")
+
+    @patch("app.smtplib.SMTP", side_effect=RuntimeError("SMTP unavailable"))
+    def test_booking_confirmation_email_status_failed_when_smtp_raises(self, _mock_smtp):
+        app.config["SMTP_ENABLED"] = True
+        event_id = self._create_event(name="Email Fail Event", date="2026-08-10", location="Austin")
+
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Sonam", "email": "sonam@example.com", "phone": "+1 555 222 1010", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT confirmation_email_status, confirmation_email_error
+                FROM bookings
+                WHERE event_id = ?
+                """,
+                (event_id,),
+            ).fetchone()
+        self.assertEqual(row[0], "failed")
+        self.assertIn("SMTP unavailable", row[1])
 
     def test_booking_validation_error(self):
         event_id = self._create_event()
@@ -884,6 +927,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn(b"Alex", response.data)
         self.assertIn(b"user@example.com", response.data)
         self.assertIn(b"+1 555 123 4567", response.data)
+        self.assertIn(b"Skipped", response.data)
         self.assertIn(b"2", response.data)
         self.assertIn(b"Booked At:", response.data)
 

@@ -152,13 +152,24 @@ def _migrate_bookings_table(cursor):
             user_name TEXT NOT NULL,
             user_email TEXT NOT NULL DEFAULT '',
             user_phone TEXT NOT NULL DEFAULT '',
+            confirmation_email_status TEXT NOT NULL DEFAULT 'skipped',
+            confirmation_email_error TEXT NOT NULL DEFAULT '',
             tickets INTEGER NOT NULL,
             FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE
         )
     """)
     cursor.execute("""
-        INSERT INTO bookings_new (id, event_id, user_name, user_email, user_phone, tickets)
-        SELECT b.id, b.event_id, b.user_name, '', '', b.tickets
+        INSERT INTO bookings_new (
+            id,
+            event_id,
+            user_name,
+            user_email,
+            user_phone,
+            confirmation_email_status,
+            confirmation_email_error,
+            tickets
+        )
+        SELECT b.id, b.event_id, b.user_name, '', '', 'skipped', '', b.tickets
         FROM bookings b
         JOIN events e ON e.id = b.event_id
     """)
@@ -226,6 +237,19 @@ def _ensure_bookings_contact_fields(cursor):
         cursor.execute("ALTER TABLE bookings ADD COLUMN user_email TEXT NOT NULL DEFAULT ''")
     if "user_phone" not in columns:
         cursor.execute("ALTER TABLE bookings ADD COLUMN user_phone TEXT NOT NULL DEFAULT ''")
+
+
+def _ensure_bookings_email_status_fields(cursor):
+    cursor.execute("PRAGMA table_info(bookings)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "confirmation_email_status" not in columns:
+        cursor.execute(
+            "ALTER TABLE bookings ADD COLUMN confirmation_email_status TEXT NOT NULL DEFAULT 'skipped'"
+        )
+    if "confirmation_email_error" not in columns:
+        cursor.execute(
+            "ALTER TABLE bookings ADD COLUMN confirmation_email_error TEXT NOT NULL DEFAULT ''"
+        )
 
 
 def _ensure_booking_audit_table(cursor):
@@ -546,7 +570,7 @@ def _is_valid_reference_code(reference_code):
 
 def _send_notification_email(to_email, subject, body_lines):
     if not app.config.get("SMTP_ENABLED"):
-        return False
+        return "skipped", "SMTP is disabled."
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -570,10 +594,10 @@ def _send_notification_email(to_email, subject, body_lines):
                 )
 
             smtp_client.send_message(message)
-            return True
-    except Exception:
+            return "sent", ""
+    except Exception as exc:
         app.logger.exception("Failed to send notification email.")
-        return False
+        return "failed", str(exc)[:300]
 
 
 def _send_booking_confirmation_email(to_email, user_name, event_name, event_date, event_location, tickets, reference_code):
@@ -607,6 +631,21 @@ def _send_booking_cancellation_email(to_email, user_name, event_name, reference_
             f"Reference Code: {reference_code}",
         ],
     )
+
+
+def _update_booking_confirmation_email_status(booking_id, status, error_message):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE bookings
+        SET confirmation_email_status = ?, confirmation_email_error = ?
+        WHERE id = ?
+        """,
+        (status, error_message, booking_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def _get_client_ip():
@@ -765,6 +804,8 @@ def init_db():
             user_name TEXT NOT NULL,
             user_email TEXT NOT NULL DEFAULT '',
             user_phone TEXT NOT NULL DEFAULT '',
+            confirmation_email_status TEXT NOT NULL DEFAULT 'skipped',
+            confirmation_email_error TEXT NOT NULL DEFAULT '',
             tickets INTEGER NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             reference_code TEXT UNIQUE,
@@ -776,6 +817,7 @@ def init_db():
     _ensure_bookings_created_at(cursor)
     _ensure_bookings_reference_code(cursor)
     _ensure_bookings_contact_fields(cursor)
+    _ensure_bookings_email_status_fields(cursor)
     _ensure_events_capacity(cursor)
     _ensure_booking_audit_table(cursor)
     _ensure_request_rate_limit_table(cursor)
@@ -1088,10 +1130,28 @@ def book_event(event_id):
 
         cursor.execute(
             """
-            INSERT INTO bookings (event_id, user_name, user_email, user_phone, tickets, reference_code)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO bookings (
+                event_id,
+                user_name,
+                user_email,
+                user_phone,
+                confirmation_email_status,
+                confirmation_email_error,
+                tickets,
+                reference_code
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (event_id, name, email, phone, tickets, _generate_booking_reference(cursor)),
+            (
+                event_id,
+                name,
+                email,
+                phone,
+                "pending",
+                "",
+                tickets,
+                _generate_booking_reference(cursor),
+            ),
         )
         booking_id = cursor.lastrowid
         cursor.execute("SELECT reference_code FROM bookings WHERE id = ?", (booking_id,))
@@ -1105,7 +1165,7 @@ def book_event(event_id):
         )
         conn.commit()
         conn.close()
-        _send_booking_confirmation_email(
+        email_status, email_error = _send_booking_confirmation_email(
             to_email=email,
             user_name=name,
             event_name=event_name,
@@ -1114,6 +1174,7 @@ def book_event(event_id):
             tickets=tickets,
             reference_code=booking_reference,
         )
+        _update_booking_confirmation_email_status(booking_id, email_status, email_error)
 
         flash(
             f"Booking successful. Your reference code: {booking_reference}",
@@ -1260,7 +1321,17 @@ def bookings():
 
     cursor.execute(
         f"""
-        SELECT b.id, e.name, b.user_name, b.user_email, b.user_phone, b.tickets, b.created_at, b.reference_code
+        SELECT
+            b.id,
+            e.name,
+            b.user_name,
+            b.user_email,
+            b.user_phone,
+            b.confirmation_email_status,
+            b.confirmation_email_error,
+            b.tickets,
+            b.created_at,
+            b.reference_code
         FROM bookings b
         JOIN events e ON e.id = b.event_id
         {where_clause}
@@ -1278,9 +1349,11 @@ def bookings():
             "user_name": row[2],
             "user_email": row[3],
             "user_phone": row[4],
-            "tickets": row[5],
-            "created_at": row[6],
-            "reference_code": row[7],
+            "confirmation_email_status": row[5],
+            "confirmation_email_error": row[6],
+            "tickets": row[7],
+            "created_at": row[8],
+            "reference_code": row[9],
         }
         for row in booking_rows
     ]

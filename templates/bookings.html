@@ -26,6 +26,18 @@
         <p><strong>User:</strong> {{ booking.user_name }}</p>
         <p><strong>Email:</strong> {{ booking.user_email }}</p>
         <p><strong>Phone:</strong> {{ booking.user_phone }}</p>
+        <p>
+            <strong>Confirmation Email:</strong>
+            {% if booking.confirmation_email_status == "sent" %}
+                <span class="badge badge-sent">Sent</span>
+            {% elif booking.confirmation_email_status == "failed" %}
+                <span class="badge badge-failed" title="{{ booking.confirmation_email_error }}">Failed</span>
+            {% elif booking.confirmation_email_status == "pending" %}
+                <span class="badge badge-skipped">Pending</span>
+            {% else %}
+                <span class="badge badge-skipped">Skipped</span>
+            {% endif %}
+        </p>
         <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
         <p><strong>Reference Code:</strong> {{ booking.reference_code }}</p>
         <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>
