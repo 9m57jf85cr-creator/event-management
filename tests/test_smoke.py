@@ -3,6 +3,7 @@ import re
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 
 from app import app, init_db, reset_rate_limit_state
 
@@ -78,7 +79,7 @@ class SmokeFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Event added successfully.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute("SELECT id FROM events WHERE name = ?", ("Smoke Test Event",)).fetchone()
         self.assertIsNotNone(row)
         event_id = row[0]

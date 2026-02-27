@@ -3,6 +3,7 @@ import re
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from unittest.mock import patch
 
 from app import app, init_db, load_runtime_config, reset_rate_limit_state
@@ -83,7 +84,7 @@ class EventManagementAppTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 "SELECT id FROM events WHERE name = ? AND date = ? AND location = ?",
                 (name, date, location),
@@ -93,7 +94,7 @@ class EventManagementAppTests(unittest.TestCase):
         return row[0]
 
     def _get_booking_reference(self, event_id, user_name):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 "SELECT reference_code FROM bookings WHERE event_id = ? AND user_name = ? ORDER BY id DESC",
                 (event_id, user_name),
@@ -102,7 +103,7 @@ class EventManagementAppTests(unittest.TestCase):
         return row[0]
 
     def _get_latest_audit_row(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 """
                 SELECT booking_id, reference_code, action, actor
@@ -146,7 +147,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Event added successfully.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             count = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
 
         self.assertEqual(count, 1)
@@ -326,7 +327,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Date must be in YYYY-MM-DD format.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             count = conn.execute(
                 "SELECT COUNT(*) FROM events WHERE name = ?",
                 ("Format Fail",),
@@ -346,7 +347,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Event deleted.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             count = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
 
         self.assertEqual(count, 0)
@@ -369,7 +370,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Event updated successfully.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 "SELECT name, date, location, capacity FROM events WHERE id = ?",
                 (event_id,),
@@ -408,7 +409,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Booking successful.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 """
                 SELECT user_name, tickets, reference_code, confirmation_email_status, confirmation_email_error
@@ -448,7 +449,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn("Booking Confirmed: Email Event", message["Subject"])
         self.assertIn("Reference Code:", message.get_content())
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 """
                 SELECT confirmation_email_status, confirmation_email_error
@@ -473,7 +474,7 @@ class EventManagementAppTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 """
                 SELECT confirmation_email_status, confirmation_email_error
@@ -820,7 +821,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Your booking was cancelled.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             remaining = conn.execute(
                 "SELECT COUNT(*) FROM bookings WHERE reference_code = ?",
                 (reference_code,),
@@ -881,7 +882,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Invalid booking reference code.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             remaining = conn.execute(
                 "SELECT COUNT(*) FROM bookings WHERE reference_code = ?",
                 (reference_code,),
@@ -1034,7 +1035,7 @@ class EventManagementAppTests(unittest.TestCase):
             follow_redirects=True,
         )
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             booking_id = conn.execute(
                 "SELECT id FROM bookings WHERE event_id = ?",
                 (event_id,),
@@ -1049,7 +1050,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Booking cancelled.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             remaining = conn.execute(
                 "SELECT COUNT(*) FROM bookings WHERE id = ?",
                 (booking_id,),
@@ -1082,7 +1083,7 @@ class EventManagementAppTests(unittest.TestCase):
             follow_redirects=True,
         )
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             booking_id = conn.execute("SELECT id FROM bookings WHERE event_id = ?", (event_id,)).fetchone()[0]
 
         app.config["SMTP_ENABLED"] = True
@@ -1098,7 +1099,7 @@ class EventManagementAppTests(unittest.TestCase):
         smtp_client = mock_smtp.return_value.__enter__.return_value
         smtp_client.send_message.assert_called()
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             status = conn.execute(
                 "SELECT confirmation_email_status FROM bookings WHERE id = ?",
                 (booking_id,),
@@ -1114,7 +1115,7 @@ class EventManagementAppTests(unittest.TestCase):
             get_path=f"/book/{event_id}",
             follow_redirects=True,
         )
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             booking_id = conn.execute("SELECT id FROM bookings WHERE event_id = ?", (event_id,)).fetchone()[0]
 
         app.config["SMTP_ENABLED"] = True
@@ -1127,7 +1128,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Confirmation email failed to send.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 "SELECT confirmation_email_status, confirmation_email_error FROM bookings WHERE id = ?",
                 (booking_id,),
@@ -1143,7 +1144,7 @@ class EventManagementAppTests(unittest.TestCase):
             get_path=f"/book/{event_id}",
             follow_redirects=True,
         )
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             booking_id = conn.execute("SELECT id FROM bookings WHERE event_id = ?", (event_id,)).fetchone()[0]
 
         app.config["SMTP_ENABLED"] = False
@@ -1156,7 +1157,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Confirmation email skipped because SMTP is disabled.", response.data)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 "SELECT confirmation_email_status, confirmation_email_error FROM bookings WHERE id = ?",
                 (booking_id,),
@@ -1172,7 +1173,7 @@ class EventManagementAppTests(unittest.TestCase):
             get_path=f"/book/{event_id}",
             follow_redirects=True,
         )
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             booking_id = conn.execute("SELECT id FROM bookings WHERE event_id = ?", (event_id,)).fetchone()[0]
 
         self._logout_admin()
@@ -1284,7 +1285,7 @@ class EventManagementAppTests(unittest.TestCase):
             follow_redirects=True,
         )
         reference_code = self._get_booking_reference(event_id, "AuditedUser")
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             booking_id = conn.execute(
                 "SELECT id FROM bookings WHERE reference_code = ?",
                 (reference_code,),
@@ -1314,7 +1315,7 @@ class EventManagementAppTests(unittest.TestCase):
         reference_code = self._get_booking_reference(event_id, "ExportUser")
 
         booking_id = None
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             booking_id = conn.execute(
                 "SELECT id FROM bookings WHERE reference_code = ?",
                 (reference_code,),

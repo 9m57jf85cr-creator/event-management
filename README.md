@@ -135,6 +135,12 @@ source .venv/bin/activate
 python -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
+## Next Steps
+
+1. Create/update `.env` with `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SECRET_KEY`, and `API_KEY`.
+2. Run `python -m unittest discover -s tests -p 'test_*.py' -v` to verify all flows.
+3. Start the app with `python app.py` and test end-to-end: admin login, add event, book, self-cancel, and bookings export.
+
 Quick smoke test:
 
 ```bash
