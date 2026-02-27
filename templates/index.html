@@ -20,6 +20,18 @@
 {% endif %}
 
 <h2>All Events</h2>
+<div class="card">
+    <h3>Filter by Date</h3>
+    <form action="{{ url_for('home') }}" method="GET" class="row">
+        <input type="date" name="date_from" value="{{ filters.date_from | default('', true) }}" aria-label="From date">
+        <input type="date" name="date_to" value="{{ filters.date_to | default('', true) }}" aria-label="To date">
+        <input type="hidden" name="per_page" value="{{ per_page | default(10, true) }}">
+        <button type="submit">Apply Filter</button>
+    </form>
+    <div class="actions" style="margin-top: 8px;">
+        <a href="{{ url_for('home') }}">Clear Filter</a>
+    </div>
+</div>
 {% for event in event_data | default([], true) %}
     <div class="card">
         <h3>{{ event.name }}</h3>
@@ -46,4 +58,16 @@
 {% else %}
     <p class="muted">No events yet.</p>
 {% endfor %}
+
+{% if total_pages > 1 %}
+    <div class="actions">
+        {% if page > 1 %}
+            <a href="{{ url_for('home', date_from=filters.date_from, date_to=filters.date_to, per_page=per_page, page=page-1) }}">Prev</a>
+        {% endif %}
+        <span class="muted">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+            <a href="{{ url_for('home', date_from=filters.date_from, date_to=filters.date_to, per_page=per_page, page=page+1) }}">Next</a>
+        {% endif %}
+    </div>
+{% endif %}
 {% endblock %}

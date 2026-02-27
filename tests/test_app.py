@@ -622,6 +622,44 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn(b"Remaining Tickets: 0", response.data)
         self.assertIn(b"Sold Out", response.data)
 
+    def test_home_page_filters_by_date_range(self):
+        self._create_event(name="March Event", date="2026-03-10", location="Austin", capacity="10")
+        self._create_event(name="April Event", date="2026-04-20", location="Austin", capacity="10")
+
+        response = self.client.get("/?date_from=2026-04-01&date_to=2026-04-30")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"April Event", response.data)
+        self.assertNotIn(b"March Event", response.data)
+
+    def test_home_page_invalid_date_filter_shows_error(self):
+        self._create_event(name="Any Event", date="2026-06-01", location="Austin", capacity="10")
+
+        response = self.client.get("/?date_from=06-01-2026")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Date filters must be in YYYY-MM-DD format.", response.data)
+        self.assertIn(b"Any Event", response.data)
+
+    def test_home_page_pagination_controls(self):
+        for i in range(12):
+            self._create_event(
+                name=f"Home Page Event {i}",
+                date=f"2026-05-{i + 1:02d}",
+                location="Remote",
+                capacity="10",
+            )
+
+        page1 = self.client.get("/?page=1&per_page=10")
+        self.assertEqual(page1.status_code, 200)
+        self.assertIn(b"Page 1 of 2", page1.data)
+        self.assertIn(b"Home Page Event 0", page1.data)
+        self.assertNotIn(b"Home Page Event 10", page1.data)
+
+        page2 = self.client.get("/?page=2&per_page=10")
+        self.assertEqual(page2.status_code, 200)
+        self.assertIn(b"Page 2 of 2", page2.data)
+        self.assertIn(b"Home Page Event 10", page2.data)
+        self.assertNotIn(b"Home Page Event 0", page2.data)
+
     def test_api_events_returns_expected_schema(self):
         event_id = self._create_event(name="API Event", date="2026-11-01", location="NYC", capacity="5")
         self._post_with_csrf(

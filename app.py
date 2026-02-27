@@ -473,6 +473,55 @@ def _parse_events_api_filters():
     }
 
 
+def _parse_home_event_filters():
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+    page = request.args.get("page", default=1, type=int)
+    per_page = request.args.get("per_page", default=10, type=int)
+    if page < 1:
+        page = 1
+    if per_page < 1:
+        per_page = 1
+    per_page = min(per_page, 50)
+
+    for value in (date_from, date_to):
+        if value:
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError:
+                flash("Date filters must be in YYYY-MM-DD format.", "error")
+                return {
+                    "date_from": "",
+                    "date_to": "",
+                    "page": page,
+                    "per_page": per_page,
+                    "where_clause": "",
+                    "params": [],
+                }
+
+    where_parts = []
+    params = []
+    if date_from:
+        where_parts.append("e.date >= ?")
+        params.append(date_from)
+    if date_to:
+        where_parts.append("e.date <= ?")
+        params.append(date_to)
+
+    where_clause = ""
+    if where_parts:
+        where_clause = "WHERE " + " AND ".join(where_parts)
+
+    return {
+        "date_from": date_from,
+        "date_to": date_to,
+        "page": page,
+        "per_page": per_page,
+        "where_clause": where_clause,
+        "params": params,
+    }
+
+
 def admin_required(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
@@ -871,15 +920,37 @@ def logout():
 # Home Page
 @app.route("/")
 def home():
+    filters = _parse_home_event_filters()
+    page = filters["page"]
+    per_page = filters["per_page"]
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        f"""
+        SELECT COUNT(*)
+        FROM events e
+        {filters['where_clause']}
+        """,
+        filters["params"],
+    )
+    total_items = cursor.fetchone()[0]
+    total_pages = max(1, (total_items + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * per_page
+
+    cursor.execute(
+        f"""
         SELECT e.id, e.name, e.date, e.location, e.capacity, COALESCE(SUM(b.tickets), 0) AS total_tickets
         FROM events e
         LEFT JOIN bookings b ON e.id = b.event_id
+        {filters['where_clause']}
         GROUP BY e.id, e.name, e.date, e.location, e.capacity
         ORDER BY e.date, e.id
-    """)
+        LIMIT ? OFFSET ?
+        """,
+        filters["params"] + [per_page, offset],
+    )
     event_rows = cursor.fetchall()
     conn.close()
     event_data = [
@@ -894,7 +965,14 @@ def home():
         }
         for row in event_rows
     ]
-    return render_template("index.html", event_data=event_data)
+    return render_template(
+        "index.html",
+        event_data=event_data,
+        filters=filters,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
+    )
 
 
 def _events_api_response():
