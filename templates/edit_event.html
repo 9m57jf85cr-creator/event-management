@@ -5,7 +5,7 @@
 {% block content %}
 <div class="card">
     <h2>Edit Event</h2>
-    <form action="{{ url_for('edit_event', event_id=event.id) }}" method="POST" class="row">
+    <form action="{{ url_for('events.edit_event', event_id=event.id) }}" method="POST" class="row">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="name" value="{{ event.name }}" required>
         <input type="date" name="date" value="{{ event.date }}" required>

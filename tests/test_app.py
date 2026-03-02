@@ -760,6 +760,105 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["version"], "v1")
 
+    def test_api_v1_bookings_requires_key(self):
+        event_id = self._create_event(name="API Key Required Event", date="2026-11-16", location="SF", capacity="3")
+        response = self.client.post(
+            "/api/v1/bookings",
+            json={
+                "event_id": event_id,
+                "name": "API User",
+                "email": "api.user@example.com",
+                "phone": "+1 555 111 2222",
+                "tickets": 1,
+            },
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_api_v1_bookings_create_success(self):
+        event_id = self._create_event(name="API Booking Event", date="2026-11-17", location="Seattle", capacity="4")
+        response = self.client.post(
+            "/api/v1/bookings",
+            headers=self._api_headers(),
+            json={
+                "event_id": event_id,
+                "name": "API Booker",
+                "email": "booker@example.com",
+                "phone": "+1 555 222 3333",
+                "tickets": 2,
+            },
+        )
+        self.assertEqual(response.status_code, 201)
+        payload = response.get_json()
+        self.assertEqual(payload["status"], "success")
+        self.assertRegex(payload["reference_code"], r"^[A-Z0-9]{10}$")
+
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute(
+                "SELECT user_name, user_email, user_phone, tickets FROM bookings WHERE reference_code = ?",
+                (payload["reference_code"],),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], "API Booker")
+        self.assertEqual(row[1], "booker@example.com")
+        self.assertEqual(row[2], "+1 555 222 3333")
+        self.assertEqual(row[3], 2)
+
+    def test_api_v1_bookings_invalid_payload_returns_400(self):
+        event_id = self._create_event(name="API Invalid Payload Event", date="2026-11-18", location="Austin", capacity="4")
+        response = self.client.post(
+            "/api/v1/bookings",
+            headers=self._api_headers(),
+            json={
+                "event_id": event_id,
+                "name": "API User",
+                "email": "invalid-email",
+                "phone": "+1 555 222 3333",
+                "tickets": 1,
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        self.assertIn("error", payload)
+
+    def test_api_v1_bookings_event_not_found_returns_404(self):
+        response = self.client.post(
+            "/api/v1/bookings",
+            headers=self._api_headers(),
+            json={
+                "event_id": 999999,
+                "name": "API User",
+                "email": "api.user@example.com",
+                "phone": "+1 555 111 2222",
+                "tickets": 1,
+            },
+        )
+        self.assertEqual(response.status_code, 404)
+        payload = response.get_json()
+        self.assertEqual(payload["error"], "Event not found.")
+
+    def test_api_v1_bookings_sold_out_returns_409(self):
+        event_id = self._create_event(name="API Sold Out Event", date="2026-11-19", location="LA", capacity="1")
+        self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "First Buyer", "tickets": "1"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        response = self.client.post(
+            "/api/v1/bookings",
+            headers=self._api_headers(),
+            json={
+                "event_id": event_id,
+                "name": "Late Buyer",
+                "email": "late@example.com",
+                "phone": "+1 555 777 8888",
+                "tickets": 1,
+            },
+        )
+        self.assertEqual(response.status_code, 409)
+        payload = response.get_json()
+        self.assertEqual(payload["error"], "This event is sold out.")
+
     def test_booking_validation_name_too_long(self):
         event_id = self._create_event()
         response = self._post_with_csrf(
@@ -1413,8 +1512,9 @@ class EventManagementAppTests(unittest.TestCase):
             {
                 "FLASK_ENV": "production",
                 "SECRET_KEY": "x" * 40,
-                "ADMIN_USERNAME": "admin",
-                "ADMIN_PASSWORD": "admin123",
+                "ADMIN_USERNAME": "prod-admin",
+                "ADMIN_PASSWORD": "StrongPass123!",
+                "API_KEY": "prod-api-key-123",
                 "DATABASE": "events.db",
             },
             clear=False,

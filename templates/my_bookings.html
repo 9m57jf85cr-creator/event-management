@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>My Bookings</h1>
-<form action="{{ url_for('my_bookings') }}" method="GET" class="row" style="margin-bottom: 12px;">
+<form action="{{ url_for('bookings.my_bookings') }}" method="GET" class="row" style="margin-bottom: 12px;">
     <input type="text" name="ref" value="{{ reference_code | default('', true) }}" placeholder="Enter your booking reference code" required>
     <button type="submit">Find Bookings</button>
 </form>
@@ -19,7 +19,7 @@
             <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
             <p><strong>Reference Code:</strong> {{ booking.reference_code }}</p>
             <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>
-            <form action="{{ url_for('cancel_my_booking', reference_code=booking.reference_code) }}" method="POST">
+            <form action="{{ url_for('bookings.cancel_my_booking', reference_code=booking.reference_code) }}" method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn-danger">Cancel My Booking</button>
             </form>

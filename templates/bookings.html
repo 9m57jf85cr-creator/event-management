@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>All Bookings</h1>
-<form action="{{ url_for('bookings') }}" method="GET" class="row" style="margin-bottom: 10px;">
+<form action="{{ url_for('bookings.bookings') }}" method="GET" class="row" style="margin-bottom: 10px;">
     <input type="text" name="q" value="{{ q | default('', true) }}" placeholder="Search by event, user, email, or phone">
     <select name="status">
         <option value="" {% if not status_filter %}selected{% endif %}>Email: All</option>
@@ -25,7 +25,7 @@
     </select>
     <button type="submit">Search</button>
 </form>
-<p><a href="{{ url_for('export_bookings_csv', q=q, status=status_filter, sort_by=sort_by, sort_dir=sort_dir) }}">Export CSV Report</a></p>
+<p><a href="{{ url_for('bookings.export_bookings_csv', q=q, status=status_filter, sort_by=sort_by, sort_dir=sort_dir) }}">Export CSV Report</a></p>
 
 {% for booking in booking_data | default([], true) %}
     <div class="card">
@@ -48,11 +48,11 @@
         <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
         <p><strong>Reference Code:</strong> {{ booking.reference_code }}</p>
         <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>
-        <form action="{{ url_for('resend_booking_confirmation', booking_id=booking.id) }}" method="POST" style="margin-bottom: 8px;">
+        <form action="{{ url_for('bookings.resend_booking_confirmation', booking_id=booking.id) }}" method="POST" style="margin-bottom: 8px;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit">Resend Confirmation Email</button>
         </form>
-        <form action="{{ url_for('cancel_booking', booking_id=booking.id) }}" method="POST">
+        <form action="{{ url_for('bookings.cancel_booking', booking_id=booking.id) }}" method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-danger">Cancel Booking</button>
         </form>
@@ -64,11 +64,11 @@
 {% if total_pages > 1 %}
     <div class="actions">
         {% if page > 1 %}
-            <a href="{{ url_for('bookings', q=q, status=status_filter, sort_by=sort_by, sort_dir=sort_dir, page=page-1) }}">Prev</a>
+            <a href="{{ url_for('bookings.bookings', q=q, status=status_filter, sort_by=sort_by, sort_dir=sort_dir, page=page-1) }}">Prev</a>
         {% endif %}
         <span class="muted">Page {{ page }} of {{ total_pages }}</span>
         {% if page < total_pages %}
-            <a href="{{ url_for('bookings', q=q, status=status_filter, sort_by=sort_by, sort_dir=sort_dir, page=page+1) }}">Next</a>
+            <a href="{{ url_for('bookings.bookings', q=q, status=status_filter, sort_by=sort_by, sort_dir=sort_dir, page=page+1) }}">Next</a>
         {% endif %}
     </div>
 {% endif %}

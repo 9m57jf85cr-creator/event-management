@@ -1,0 +1,31 @@
+services:
+  web:
+    build: .
+    container_name: event-management-web
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE: /data/events.db
+    volumes:
+      - event_mgmt_data:/data
+    command: >-
+      sh -c "python -m flask --app app db-upgrade &&
+      gunicorn -w 2 -b 0.0.0.0:8000 app:app"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  event_mgmt_data:

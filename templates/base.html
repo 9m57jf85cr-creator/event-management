@@ -111,18 +111,18 @@
 <body>
     <div class="container">
         <div class="top-nav">
-            <a href="{{ url_for('home') }}">Home</a>
+            <a href="{{ url_for('events.home') }}">Home</a>
             {% if session.get('is_admin') %}
-                <a href="{{ url_for('bookings') }}">Bookings</a>
-                <a href="{{ url_for('booking_audit') }}">Audit</a>
+                <a href="{{ url_for('bookings.bookings') }}">Bookings</a>
+                <a href="{{ url_for('bookings.booking_audit') }}">Audit</a>
                 <span class="muted">Admin</span>
-                <form action="{{ url_for('logout') }}" method="POST" class="inline-form">
+                <form action="{{ url_for('auth.logout') }}" method="POST" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn-danger">Logout</button>
                 </form>
             {% else %}
-                <a href="{{ url_for('my_bookings') }}">My Bookings</a>
-                <a href="{{ url_for('login') }}">Admin Login</a>
+                <a href="{{ url_for('bookings.my_bookings') }}">My Bookings</a>
+                <a href="{{ url_for('auth.login') }}">Admin Login</a>
             {% endif %}
         </div>
         {% with messages = get_flashed_messages(with_categories=true) %}
