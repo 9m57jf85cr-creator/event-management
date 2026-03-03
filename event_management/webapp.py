@@ -4,6 +4,7 @@ from datetime import timedelta
 from flask import Flask
 
 from .config import PROJECT_ROOT, load_dotenv, load_runtime_config
+from .date_utils import format_event_date
 from .db import get_db_connection, init_db as init_db_impl
 from .migrations import apply_pending_migrations
 from .routes import register_routes
@@ -24,6 +25,7 @@ def _configure_app(flask_app):
     flask_app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     flask_app.config["SESSION_COOKIE_SECURE"] = flask_app.config["IS_PRODUCTION"]
     flask_app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
+    flask_app.jinja_env.filters["format_event_date"] = format_event_date
 
     register_security_hooks(
         flask_app,

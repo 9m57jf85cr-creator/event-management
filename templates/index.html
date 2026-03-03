@@ -35,7 +35,7 @@
 {% for event in event_data | default([], true) %}
     <div class="card">
         <h3>{{ event.name }}</h3>
-        <p><strong>Date:</strong> {{ event.date }}</p>
+        <p><strong>Date:</strong> {{ event.date | format_event_date }}</p>
         <p><strong>Location:</strong> {{ event.location }}</p>
         <p><strong>Capacity:</strong> {{ event.capacity }}</p>
         <p class="muted">Total Tickets Booked: {{ event.total_tickets }}</p>

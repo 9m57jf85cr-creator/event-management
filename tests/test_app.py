@@ -622,6 +622,23 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn(b"Remaining Tickets: 0", response.data)
         self.assertIn(b"Sold Out", response.data)
 
+    def test_home_page_displays_consistent_event_date_format(self):
+        self._create_event(name="ISO Event", date="2026-04-02", location="Austin", capacity="10")
+
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            conn.execute(
+                "INSERT INTO events (name, date, location, capacity) VALUES (?, ?, ?, ?)",
+                ("Legacy Event", "10 March 2026", "Srinagar", 100),
+            )
+            conn.commit()
+
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"02 Apr 2026", response.data)
+        self.assertIn(b"10 Mar 2026", response.data)
+        self.assertNotIn(b"2026-04-02", response.data)
+        self.assertNotIn(b"10 March 2026", response.data)
+
     def test_home_page_filters_by_date_range(self):
         self._create_event(name="March Event", date="2026-03-10", location="Austin", capacity="10")
         self._create_event(name="April Event", date="2026-04-20", location="Austin", capacity="10")
