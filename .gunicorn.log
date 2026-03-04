@@ -1,0 +1,18 @@
+[2026-03-01 01:15:21 -0800] [3223] [INFO] Starting gunicorn 23.0.0
+[2026-03-01 01:15:21 -0800] [3223] [INFO] Listening at: http://0.0.0.0:8000 (3223)
+[2026-03-01 01:15:21 -0800] [3223] [INFO] Using worker: sync
+[2026-03-01 01:15:21 -0800] [3226] [INFO] Booting worker with pid: 3226
+[2026-03-01 01:15:21 -0800] [3227] [INFO] Booting worker with pid: 3227
+[2026-03-01 01:16:57 -0800] [3223] [INFO] Handling signal: term
+[2026-03-01 01:16:57 -0800] [3226] [INFO] Worker exiting (pid: 3226)
+[2026-03-01 01:16:57 -0800] [3227] [INFO] Worker exiting (pid: 3227)
+[2026-03-01 01:16:57 -0800] [3223] [INFO] Shutting down: Master
+[2026-03-01 01:18:12 -0800] [3633] [INFO] Starting gunicorn 23.0.0
+[2026-03-01 01:18:12 -0800] [3633] [INFO] Listening at: http://0.0.0.0:8000 (3633)
+[2026-03-01 01:18:12 -0800] [3633] [INFO] Using worker: sync
+[2026-03-01 01:18:12 -0800] [3637] [INFO] Booting worker with pid: 3637
+[2026-03-01 01:18:12 -0800] [3638] [INFO] Booting worker with pid: 3638
+[2026-03-01 01:18:40 -0800] [3633] [INFO] Handling signal: term
+[2026-03-01 01:18:40 -0800] [3638] [INFO] Worker exiting (pid: 3638)
+[2026-03-01 01:18:40 -0800] [3637] [INFO] Worker exiting (pid: 3637)
+[2026-03-01 01:18:41 -0800] [3633] [INFO] Shutting down: Master
