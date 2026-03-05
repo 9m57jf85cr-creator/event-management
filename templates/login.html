@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 
 {% block title %}Admin Login{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width: 460px;">
+<div class="card login-card">
     <h2>Admin Login</h2>
     <p><strong>Username:</strong> {{ admin_username }}</p>
     <p class="muted">Password is not displayed for security.</p>
@@ -11,24 +12,15 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="next" value="{{ next_url }}">
         <label for="username">Username</label>
-        <input id="username" type="text" name="username" placeholder="Username" required style="margin-bottom: 10px;">
+        <input id="username" class="login-input" type="text" name="username" placeholder="Username" required>
         <label for="password">Password</label>
-        <button id="toggle-password" type="button" style="width: auto; margin-bottom: 8px;">Show Password</button>
-        <input id="password" type="password" name="password" placeholder="Password" required style="margin-bottom: 10px;">
+        <button id="toggle-password" class="toggle-password-btn" type="button">Show Password</button>
+        <input id="password" class="login-input" type="password" name="password" placeholder="Password" required>
         <button type="submit">Login</button>
     </form>
 </div>
-<script>
-    (function () {
-        const button = document.getElementById("toggle-password");
-        const passwordInput = document.getElementById("password");
-        if (!button || !passwordInput) return;
+{% endblock %}
 
-        button.addEventListener("click", function () {
-            const isHidden = passwordInput.type === "password";
-            passwordInput.type = isHidden ? "text" : "password";
-            button.textContent = isHidden ? "Hide Password" : "Show Password";
-        });
-    })();
-</script>
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/login.js') }}"></script>
 {% endblock %}

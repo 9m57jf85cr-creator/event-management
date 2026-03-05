@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 
 {% block title %}Booking Audit{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/booking_audit.css') }}">{% endblock %}
 
 {% block content %}
 <h1>Booking Audit</h1>
-<form action="{{ url_for('bookings.booking_audit') }}" method="GET" class="row" style="margin-bottom: 10px;">
+<form action="{{ url_for('bookings.booking_audit') }}" method="GET" class="row audit-filter-form">
     <select name="action">
         <option value="" {% if not filters.action %}selected{% endif %}>Action: All</option>
         <option value="cancel" {% if filters.action == "cancel" %}selected{% endif %}>Action: Cancel</option>

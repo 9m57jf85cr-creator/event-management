@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 
 {% block title %}My Bookings{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/my_bookings.css') }}">{% endblock %}
 
 {% block content %}
 <h1>My Bookings</h1>
-<form action="{{ url_for('bookings.my_bookings') }}" method="GET" class="row" style="margin-bottom: 12px;">
+<form action="{{ url_for('bookings.my_bookings') }}" method="GET" class="row my-bookings-search-form">
     <input type="text" name="ref" value="{{ reference_code | default('', true) }}" placeholder="Enter your booking reference code" required>
     <button type="submit">Find Bookings</button>
 </form>

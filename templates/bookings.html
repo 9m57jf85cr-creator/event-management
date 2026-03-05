@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 
 {% block title %}All Bookings{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/bookings.css') }}">{% endblock %}
 
 {% block content %}
 <h1>All Bookings</h1>
-<form action="{{ url_for('bookings.bookings') }}" method="GET" class="row" style="margin-bottom: 10px;">
+<form action="{{ url_for('bookings.bookings') }}" method="GET" class="row bookings-search-form">
     <input type="text" name="q" value="{{ q | default('', true) }}" placeholder="Search by event, user, email, or phone">
     <select name="status">
         <option value="" {% if not status_filter %}selected{% endif %}>Email: All</option>
@@ -48,7 +49,7 @@
         <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
         <p><strong>Reference Code:</strong> {{ booking.reference_code }}</p>
         <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>
-        <form action="{{ url_for('bookings.resend_booking_confirmation', booking_id=booking.id) }}" method="POST" style="margin-bottom: 8px;">
+        <form action="{{ url_for('bookings.resend_booking_confirmation', booking_id=booking.id) }}" method="POST" class="resend-confirmation-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit">Resend Confirmation Email</button>
         </form>

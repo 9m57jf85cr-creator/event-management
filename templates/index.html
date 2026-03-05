@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Event Management{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">{% endblock %}
 
 {% block content %}
 <h1>Event Management System</h1>
@@ -28,7 +29,7 @@
         <input type="hidden" name="per_page" value="{{ per_page | default(10, true) }}">
         <button type="submit">Apply Filter</button>
     </form>
-    <div class="actions" style="margin-top: 8px;">
+    <div class="actions filter-actions">
         <a href="{{ url_for('events.home') }}">Clear Filter</a>
     </div>
 </div>
@@ -48,7 +49,7 @@
             {% endif %}
             {% if session.get('is_admin') %}
                 <a href="{{ url_for('events.edit_event', event_id=event.id) }}">Edit</a>
-                <form action="{{ url_for('events.delete_event', id=event.id) }}" method="POST" class="inline-form" style="display:inline;">
+                <form action="{{ url_for('events.delete_event', id=event.id) }}" method="POST" class="inline-form inline-form-inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn-danger">Delete</button>
                 </form>

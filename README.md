@@ -9,6 +9,8 @@ Admin users can review cancellation history from the booking audit page.
 - Repo root: `/Users/sonamchosket/Desktop/event-management`
 - Entry file: `app.py` (compatibility wrapper)
 - App package: `event_management/`
+- Frontend templates: `templates/`
+- Frontend static assets: `static/css/`, `static/js/`, `static/manifest.json`, `static/service-worker.js`
 - Blueprints:
   - `event_management/blueprints/auth.py`
   - `event_management/blueprints/events.py`
@@ -33,6 +35,11 @@ Security and middleware:
 App startup:
 - `event_management/webapp.py` -> `create_app()` factory, route/security registration, CLI command wiring
 - `app.py` -> compatibility entry point used by tests and local run commands
+
+Frontend rendering:
+- `templates/base.html` loads global assets (`static/css/main.css`, `static/js/main.js`)
+- page-specific CSS is attached via `{% block extra_head %}` in each template
+- page-specific JS is attached via `{% block extra_scripts %}` in each template (for example `static/js/login.js`)
 
 Data lifecycle:
 - Versioned migrations are applied via `flask --app app db-upgrade`
