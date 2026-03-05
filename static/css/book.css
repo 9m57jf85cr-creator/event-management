@@ -1,6 +1,8 @@
 .book-card {
-    max-width: 620px;
+    max-width: 680px;
+    margin: 1rem auto 0;
 }
+
 .book-input {
-    margin-bottom: 10px;
+    margin-bottom: 0.62rem;
 }

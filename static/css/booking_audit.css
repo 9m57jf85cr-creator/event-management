@@ -1,3 +1,17 @@
 .audit-filter-form {
-    margin-bottom: 10px;
+    margin-bottom: 0.75rem;
+}
+
+.audit-filter-form + p {
+    margin-top: 0;
+}
+
+.audit-filter-form + p a {
+    display: inline-block;
+    border: 1px solid rgba(14, 88, 81, 0.25);
+    border-radius: 0.72rem;
+    padding: 0.45rem 0.7rem;
+    text-decoration: none;
+    color: #0e5851;
+    font-weight: 650;
 }

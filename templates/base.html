@@ -6,6 +6,9 @@
     <meta name="theme-color" content="#0f766e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
@@ -15,6 +18,7 @@
 <body>
     <div class="container">
         <div class="top-nav">
+            <span class="app-brand">EventFlow</span>
             <a href="{{ url_for('events.home') }}">Home</a>
             {% if session.get('is_admin') %}
                 <a href="{{ url_for('bookings.bookings') }}">Bookings</a>

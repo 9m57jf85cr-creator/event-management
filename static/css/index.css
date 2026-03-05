@@ -1,6 +1,15 @@
 .filter-actions {
-    margin-top: 8px;
+    margin-top: 0.55rem;
 }
+
 .inline-form-inline {
     display: inline;
+}
+
+.card h3 + p {
+    margin-top: 0;
+}
+
+.card p {
+    margin: 0.32rem 0;
 }
