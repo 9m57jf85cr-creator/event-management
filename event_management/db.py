@@ -20,12 +20,14 @@ from .schema import (
 
 
 def get_db_connection(app):
+    """Create a SQLite connection with foreign key enforcement enabled."""
     conn = sqlite3.connect(app.config["DATABASE"])
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
 def update_booking_confirmation_email_status(app, booking_id, status, error_message):
+    """Persist the current confirmation-email delivery status for a booking."""
     _update_booking_confirmation_email_status(
         get_db_connection,
         app,
@@ -36,6 +38,7 @@ def update_booking_confirmation_email_status(app, booking_id, status, error_mess
 
 
 def init_db(app):
+    """Initialize core tables and apply legacy compatibility migrations."""
     conn = get_db_connection(app)
     cursor = conn.cursor()
 

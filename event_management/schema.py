@@ -1,3 +1,4 @@
+"""DDL and schema-level helpers used by database initialization/migrations."""
 
 def create_events_table(cursor):
     cursor.execute(
@@ -75,6 +76,7 @@ def log_booking_audit(cursor, booking_id, reference_code, action, actor):
 
 
 def update_booking_confirmation_email_status(get_db_connection, app, booking_id, status, error_message):
+    """Update email status metadata for an existing booking row."""
     conn = get_db_connection(app)
     cursor = conn.cursor()
     cursor.execute(

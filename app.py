@@ -1,3 +1,5 @@
+"""Compatibility module exposing the Flask app and startup helpers."""
+
 import smtplib
 
 try:
