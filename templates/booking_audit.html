@@ -4,38 +4,56 @@
 {% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/booking_audit.css') }}">{% endblock %}
 
 {% block content %}
-<h1>Booking Audit</h1>
-<form action="{{ url_for('booking_audit') }}" method="GET" class="row audit-filter-form">
-    <select name="action">
-        <option value="" {% if not filters.action %}selected{% endif %}>Action: All</option>
-        <option value="cancel" {% if filters.action == "cancel" %}selected{% endif %}>Action: Cancel</option>
-        <option value="create" {% if filters.action == "create" %}selected{% endif %}>Action: Create</option>
-    </select>
-    <select name="actor">
-        <option value="" {% if not filters.actor %}selected{% endif %}>Actor: All</option>
-        <option value="admin" {% if filters.actor == "admin" %}selected{% endif %}>Actor: Admin</option>
-        <option value="self_service" {% if filters.actor == "self_service" %}selected{% endif %}>Actor: Self Service</option>
-    </select>
-    <input type="text" name="ref" value="{{ filters.reference_code }}" placeholder="Reference code">
-    <input type="date" name="date_from" value="{{ filters.date_from }}">
-    <input type="date" name="date_to" value="{{ filters.date_to }}">
-    <button type="submit">Filter</button>
-</form>
-<p>
-    <a href="{{ url_for('export_booking_audit_csv', action=filters.action, actor=filters.actor, ref=filters.reference_code, date_from=filters.date_from, date_to=filters.date_to) }}">
-        Export Audit CSV
-    </a>
-</p>
-
-{% for row in audit_data | default([], true) %}
-    <div class="card">
-        <p><strong>Booking ID:</strong> {{ row.booking_id }}</p>
-        <p><strong>Reference:</strong> {{ row.reference_code }}</p>
-        <p><strong>Action:</strong> {{ row.action }}</p>
-        <p><strong>Actor:</strong> {{ row.actor }}</p>
-        <p class="muted"><strong>When:</strong> {{ row.created_at }}</p>
+<section class="page-shell">
+    <div class="page-header split-header">
+        <div>
+            <p class="eyebrow">Traceability</p>
+            <h1>Booking Audit</h1>
+        </div>
+        <a class="export-link" href="{{ url_for('bookings.export_booking_audit_csv', action=filters.action, actor=filters.actor, ref=filters.reference_code, date_from=filters.date_from, date_to=filters.date_to) }}">
+            Export Audit CSV
+        </a>
     </div>
-{% else %}
-    <p class="muted">No audit entries found.</p>
-{% endfor %}
+    <div class="card search-panel">
+        <form action="{{ url_for('bookings.booking_audit') }}" method="GET" class="row audit-filter-form audit-grid">
+            <select name="action">
+                <option value="" {% if not filters.action %}selected{% endif %}>Action: All</option>
+                <option value="cancel" {% if filters.action == "cancel" %}selected{% endif %}>Action: Cancel</option>
+                <option value="create" {% if filters.action == "create" %}selected{% endif %}>Action: Create</option>
+            </select>
+            <select name="actor">
+                <option value="" {% if not filters.actor %}selected{% endif %}>Actor: All</option>
+                <option value="admin" {% if filters.actor == "admin" %}selected{% endif %}>Actor: Admin</option>
+                <option value="self_service" {% if filters.actor == "self_service" %}selected{% endif %}>Actor: Self Service</option>
+            </select>
+            <input type="text" name="ref" value="{{ filters.reference_code }}" placeholder="Reference code">
+            <input type="date" name="date_from" value="{{ filters.date_from }}">
+            <input type="date" name="date_to" value="{{ filters.date_to }}">
+            <button type="submit">Filter</button>
+        </form>
+    </div>
+
+    {% if audit_data %}
+        <div class="record-grid">
+            {% for row in audit_data | default([], true) %}
+                <div class="card record-card audit-record">
+                    <div class="record-top">
+                        <div>
+                            <p class="eyebrow">Reference {{ row.reference_code }}</p>
+                            <h3>Booking ID: {{ row.booking_id }}</h3>
+                        </div>
+                        <span class="status-chip {% if row.action == 'cancel' %}status-chip-warm{% endif %}">{{ row.action }}</span>
+                    </div>
+                    <p><strong>Actor:</strong> {{ row.actor }}</p>
+                    <p class="muted"><strong>When:</strong> {{ row.created_at }}</p>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="card empty-state">
+            <h3>No audit entries found.</h3>
+            <p class="muted">Try widening the filter window or clearing the reference code.</p>
+        </div>
+    {% endif %}
+</section>
 {% endblock %}

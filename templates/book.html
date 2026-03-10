@@ -4,22 +4,35 @@
 {% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/book.css') }}">{% endblock %}
 
 {% block content %}
-<div class="card book-card">
-    <h2>Book Event: {{ event.name }}</h2>
-    <p><strong>Capacity:</strong> {{ event.capacity }}</p>
-    <p><strong>Remaining Tickets:</strong> {{ event.remaining_tickets }}</p>
+<section class="page-shell narrow-shell">
+    <div class="page-header">
+        <p class="eyebrow">Reservation</p>
+        <h1>Book Event: {{ event.name }}</h1>
+    </div>
+    <div class="card book-card">
+        <div class="detail-strip">
+            <div>
+                <span class="metric-label">Capacity</span>
+                <strong>{{ event.capacity_display }}</strong>
+            </div>
+            <div>
+                <span class="metric-label">Remaining Tickets</span>
+                <strong>{{ event.remaining_tickets_display }}</strong>
+            </div>
+        </div>
 
-    {% if event.remaining_tickets > 0 %}
-    <form action="{{ url_for('book_event', event_id=event.id) }}" method="POST">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input class="book-input" type="text" name="name" placeholder="Your Name" required>
-        <input class="book-input" type="email" name="email" placeholder="Your Email" required>
-        <input class="book-input" type="tel" name="phone" placeholder="Your Phone Number" required>
-        <input class="book-input" type="number" name="tickets" placeholder="Number of Tickets" min="1" max="{{ event.remaining_tickets }}" required>
-        <button type="submit">Confirm Booking</button>
-    </form>
-    {% else %}
-    <p class="flash-error">This event is sold out.</p>
-    {% endif %}
-</div>
+        {% if event.remaining_tickets is none or event.remaining_tickets > 0 %}
+        <form action="{{ url_for('events.book_event', event_id=event.id) }}" method="POST" class="row stacked-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input class="book-input" type="text" name="name" placeholder="Your Name" required>
+            <input class="book-input" type="email" name="email" placeholder="Your Email" required>
+            <input class="book-input" type="tel" name="phone" placeholder="Your Phone Number" required>
+            <input class="book-input" type="number" name="tickets" placeholder="Number of Tickets" min="1" max="{{ max_tickets if event.remaining_tickets is none else event.remaining_tickets }}" required>
+            <button type="submit">Confirm Booking</button>
+        </form>
+        {% else %}
+        <p class="flash-error">This event is sold out.</p>
+        {% endif %}
+    </div>
+</section>
 {% endblock %}

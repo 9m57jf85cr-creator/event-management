@@ -4,15 +4,18 @@
 {% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/edit_event.css') }}">{% endblock %}
 
 {% block content %}
-<div class="card edit-event-card">
-    <h2>Edit Event</h2>
-    <form action="{{ url_for('edit_event', event_id=event.id) }}" method="POST" class="row">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="name" value="{{ event.name }}" required>
-        <input type="date" name="date" value="{{ event.date }}" required>
-        <input type="text" name="location" value="{{ event.location }}" required>
-        <input type="number" name="capacity" value="{{ event.capacity }}" min="1" max="5000" required>
-        <button type="submit">Save Changes</button>
-    </form>
-</div>
+<section class="page-shell narrow-shell">
+    <div class="card edit-event-card">
+        <p class="eyebrow">Update listing</p>
+        <h1>Edit Event</h1>
+        <form action="{{ url_for('events.edit_event', event_id=event.id) }}" method="POST" class="row stacked-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="name" value="{{ event.name }}" required>
+            <input type="date" name="date" value="{{ event.date }}" required>
+            <input type="text" name="location" value="{{ event.location }}" required>
+            <input type="number" name="capacity" value="{{ '' if event.capacity == 0 else event.capacity }}" min="1" max="5000">
+            <button type="submit">Save Changes</button>
+        </form>
+    </div>
+</section>
 {% endblock %}

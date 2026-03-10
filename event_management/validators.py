@@ -12,6 +12,7 @@ from .constants import (
     MAX_EVENT_CAPACITY,
     MAX_EVENT_NAME_LENGTH,
     MAX_LOCATION_LENGTH,
+    UNLIMITED_CAPACITY,
 )
 
 
@@ -32,15 +33,18 @@ def validate_event_fields(name, date, location, capacity_raw):
         flash("Event fields contain invalid characters.", "error")
         return False, None
 
-    try:
-        capacity = int(capacity_raw)
-    except ValueError:
-        flash("Capacity must be a positive integer.", "error")
-        return False, None
+    if not capacity_raw:
+        capacity = UNLIMITED_CAPACITY
+    else:
+        try:
+            capacity = int(capacity_raw)
+        except ValueError:
+            flash("Capacity must be a positive integer, or leave blank for unlimited.", "error")
+            return False, None
 
-    if capacity <= 0:
-        flash("Capacity must be a positive integer.", "error")
-        return False, None
+        if capacity <= 0:
+            flash("Capacity must be a positive integer, or leave blank for unlimited.", "error")
+            return False, None
 
     if capacity > MAX_EVENT_CAPACITY:
         flash(f"Capacity cannot exceed {MAX_EVENT_CAPACITY}.", "error")

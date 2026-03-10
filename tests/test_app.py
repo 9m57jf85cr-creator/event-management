@@ -136,6 +136,20 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.headers.get("Referrer-Policy"), "no-referrer-when-downgrade")
         self.assertIn("frame-ancestors 'none'", response.headers.get("Content-Security-Policy", ""))
 
+    def test_home_page_marks_home_nav_as_current_for_admin(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'EventFlow', response.data)
+        self.assertIn(b'href="/" aria-current="page">Home</a>', response.data)
+        self.assertIn(b"Admin mode", response.data)
+
+    def test_login_page_marks_admin_login_nav_as_current_for_guest(self):
+        self._logout_admin()
+        response = self.client.get("/login")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'href="/login" aria-current="page">Admin Login</a>', response.data)
+        self.assertIn(b"Restricted access", response.data)
+
     def test_add_event_success(self):
         response = self._post_with_csrf(
             "/add_event",
@@ -621,6 +635,48 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Remaining Tickets: 0", response.data)
         self.assertIn(b"Sold Out", response.data)
+
+    def test_add_event_blank_capacity_is_unlimited(self):
+        response = self._post_with_csrf(
+            "/add_event",
+            {"name": "Unlimited Event", "date": "2026-05-01", "location": "Austin", "capacity": ""},
+            get_path="/",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Event added successfully.", response.data)
+        self.assertIn(b"Capacity:</strong> Unlimited", response.data)
+
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute("SELECT capacity FROM events WHERE name = ?", ("Unlimited Event",)).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], 0)
+
+    def test_unlimited_capacity_event_allows_multiple_bookings(self):
+        event_id = self._create_event(name="Unlimited Booking Event", capacity="")
+        first = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "First Booker", "tickets": "100"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        second = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Second Booker", "tickets": "100"},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertIn(b"Booking successful.", first.data)
+        self.assertIn(b"Booking successful.", second.data)
+
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            total = conn.execute(
+                "SELECT COALESCE(SUM(tickets), 0) FROM bookings WHERE event_id = ?",
+                (event_id,),
+            ).fetchone()[0]
+        self.assertEqual(total, 200)
 
     def test_home_page_displays_consistent_event_date_format(self):
         self._create_event(name="ISO Event", date="2026-04-02", location="Austin", capacity="10")

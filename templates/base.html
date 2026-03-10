@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#0f766e">
+    <meta name="theme-color" content="#111827">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
@@ -16,31 +16,46 @@
     <title>{% block title %}Event Management{% endblock %}</title>
 </head>
 <body>
+    <div class="page-backdrop page-backdrop-left"></div>
+    <div class="page-backdrop page-backdrop-right"></div>
+    <div class="page-grid"></div>
     <div class="container">
-        <div class="top-nav">
-            <span class="app-brand">EventFlow</span>
-            <a href="{{ url_for('home') }}">Home</a>
-            {% if session.get('is_admin') %}
-                <a href="{{ url_for('bookings') }}">Bookings</a>
-                <a href="{{ url_for('booking_audit') }}">Audit</a>
-                <span class="muted">Admin</span>
-                <form action="{{ url_for('logout') }}" method="POST" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn-danger">Logout</button>
-                </form>
-            {% else %}
-                <a href="{{ url_for('my_bookings') }}">My Bookings</a>
-                <a href="{{ url_for('login') }}">Admin Login</a>
-            {% endif %}
-        </div>
+        <header class="site-header">
+            <div class="brand-block">
+                <a href="{{ url_for('events.home') }}" class="brand-mark">EF</a>
+                <div>
+                    <p class="eyebrow">Live operations dashboard</p>
+                    <span class="app-brand">EventFlow</span>
+                </div>
+            </div>
+            <nav class="top-nav" aria-label="Primary">
+                <a href="{{ url_for('events.home') }}" {% if request.endpoint == 'events.home' %}aria-current="page"{% endif %}>Home</a>
+                {% if session.get('is_admin') %}
+                    <a href="{{ url_for('bookings.bookings') }}" {% if request.endpoint == 'bookings.bookings' %}aria-current="page"{% endif %}>Bookings</a>
+                    <a href="{{ url_for('bookings.booking_audit') }}" {% if request.endpoint == 'bookings.booking_audit' %}aria-current="page"{% endif %}>Audit</a>
+                    <span class="status-chip">Admin mode</span>
+                    <form action="{{ url_for('auth.logout') }}" method="POST" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn-danger">Logout</button>
+                    </form>
+                {% else %}
+                    <a href="{{ url_for('bookings.my_bookings') }}" {% if request.endpoint == 'bookings.my_bookings' %}aria-current="page"{% endif %}>My Bookings</a>
+                    <a href="{{ url_for('auth.login') }}" {% if request.endpoint == 'auth.login' %}aria-current="page"{% endif %}>Admin Login</a>
+                {% endif %}
+            </nav>
+        </header>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
-                {% for category, message in messages %}
-                    <p class="flash-{{ 'error' if category == 'error' else 'success' }}">{{ message }}</p>
-                {% endfor %}
+                <section class="flash-stack">
+                    {% for category, message in messages %}
+                        <p class="flash-{{ 'error' if category == 'error' else 'success' }}">{{ message }}</p>
+                    {% endfor %}
+                </section>
             {% endif %}
         {% endwith %}
-        {% block content %}{% endblock %}
+        <main class="page-content">
+            {% block content %}{% endblock %}
+        </main>
     </div>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block extra_scripts %}{% endblock %}

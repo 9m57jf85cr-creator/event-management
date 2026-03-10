@@ -4,6 +4,7 @@ from ..db import (
     log_booking_audit,
     update_booking_confirmation_email_status,
 )
+from ..constants import UNLIMITED_CAPACITY
 from ..notifications import send_booking_cancellation_email, send_booking_confirmation_email
 from ..repositories.bookings_repo import (
     fetch_booking_for_admin_cancel,
@@ -24,16 +25,19 @@ def create_booking(app, event_id, name, email, phone, tickets, event_details):
         conn.close()
         return {"status": "event_not_found"}
 
-    remaining_tickets = max(capacity_row[0] - capacity_row[1], 0)
-    if remaining_tickets <= 0:
-        conn.rollback()
-        conn.close()
-        return {"status": "sold_out"}
+    if capacity_row[0] == UNLIMITED_CAPACITY:
+        remaining_tickets = None
+    else:
+        remaining_tickets = max(capacity_row[0] - capacity_row[1], 0)
+        if remaining_tickets <= 0:
+            conn.rollback()
+            conn.close()
+            return {"status": "sold_out"}
 
-    if tickets > remaining_tickets:
-        conn.rollback()
-        conn.close()
-        return {"status": "insufficient_tickets", "remaining_tickets": remaining_tickets}
+        if tickets > remaining_tickets:
+            conn.rollback()
+            conn.close()
+            return {"status": "insufficient_tickets", "remaining_tickets": remaining_tickets}
 
     cursor.execute(
         """

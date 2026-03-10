@@ -41,7 +41,8 @@ def send_notification_email(app, to_email, subject, body_lines):
             smtp_client.send_message(message)
             return "sent", ""
     except Exception as exc:
-        app.logger.exception("Failed to send notification email.")
+        if not app.config.get("TESTING"):
+            app.logger.exception("Failed to send notification email.")
         return "failed", str(exc)[:300]
 
 

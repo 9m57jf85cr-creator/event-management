@@ -4,70 +4,140 @@
 {% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">{% endblock %}
 
 {% block content %}
-<h1>Event Management System</h1>
+<section class="hero-panel">
+    <div class="hero-copy">
+        <p class="eyebrow">Event control center</p>
+        <h1>Event Management System</h1>
+        <p class="hero-text">Plan launches, track bookings, and keep every event page feeling live, intentional, and easy to operate.</p>
+        <div class="hero-meta">
+            <div class="metric-card">
+                <span class="metric-label">Visible events</span>
+                <strong>{{ event_data | length }}</strong>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">View</span>
+                <strong>{% if filters.date_from or filters.date_to %}Filtered{% else %}All upcoming{% endif %}</strong>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">Access</span>
+                <strong>{% if session.get('is_admin') %}Admin{% else %}Guest{% endif %}</strong>
+            </div>
+        </div>
+    </div>
+    <div class="hero-side card spotlight-card">
+        <p class="spotlight-label">Flow snapshot</p>
+        <h2>Move from publishing to booking without a context switch.</h2>
+        <p class="muted">Use the dashboard to create events, watch availability, and route customers into self-service booking and cancellation flows.</p>
+    </div>
+</section>
 
-{% if session.get('is_admin') %}
-    <div class="card">
-        <h2>Add Event</h2>
-        <form action="{{ url_for('add_event') }}" method="POST" class="row">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="text" name="name" placeholder="Event Name" required>
-            <input type="date" name="date" required>
-            <input type="text" name="location" placeholder="Location" required>
-            <input type="number" name="capacity" placeholder="Capacity" min="1" max="5000" required>
-            <button type="submit">Add Event</button>
+<section class="control-grid">
+    {% if session.get('is_admin') %}
+        <div class="card admin-panel">
+            <div class="section-heading">
+                <p class="eyebrow">Publish</p>
+                <h2>Add Event</h2>
+            </div>
+            <form action="{{ url_for('events.add_event') }}" method="POST" class="row event-form-grid">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="text" name="name" placeholder="Event Name" required>
+                <input type="date" name="date" required>
+                <input type="text" name="location" placeholder="Location" required>
+                <input type="number" name="capacity" placeholder="Capacity (leave blank for unlimited)" min="1" max="5000">
+                <button type="submit">Add Event</button>
+            </form>
+        </div>
+    {% endif %}
+
+    <div class="card filter-panel">
+        <div class="section-heading">
+            <p class="eyebrow">Refine</p>
+            <h2>Filter Events</h2>
+        </div>
+        <form action="{{ url_for('events.home') }}" method="GET" class="row filter-grid">
+            <input type="date" name="date_from" value="{{ filters.date_from | default('', true) }}" aria-label="From date">
+            <input type="date" name="date_to" value="{{ filters.date_to | default('', true) }}" aria-label="To date">
+            <input type="hidden" name="per_page" value="{{ per_page | default(10, true) }}">
+            <button type="submit">Apply Filter</button>
         </form>
+        <div class="actions filter-actions">
+            <a href="{{ url_for('events.home') }}">Clear Filter</a>
+        </div>
+    </div>
+</section>
+
+<section class="section-heading events-heading">
+    <p class="eyebrow">Directory</p>
+    <h2>All Events</h2>
+</section>
+
+{% if event_data %}
+    <section class="event-grid">
+        {% for event in event_data | default([], true) %}
+            <article class="card event-card {% if event.is_sold_out %}event-card-sold-out{% endif %}">
+                <div class="event-card-top">
+                    <div>
+                        <p class="event-date-chip">{{ event.date | format_event_date }}</p>
+                        <h3>{{ event.name }}</h3>
+                    </div>
+                    {% if event.is_sold_out %}
+                        <span class="status-chip status-chip-warm">Sold Out</span>
+                    {% else %}
+                        <span class="status-chip">Open</span>
+                    {% endif %}
+                </div>
+                <p class="event-location">{{ event.location }}</p>
+                <div class="legacy-summary muted">
+                    <p><strong>Capacity:</strong> {{ event.capacity_display }}</p>
+                    <p>Remaining Tickets: {{ event.remaining_tickets_display }}</p>
+                </div>
+                <div class="event-stats">
+                    <div>
+                        <span class="metric-label">Capacity</span>
+                        <strong>{{ event.capacity_display }}</strong>
+                    </div>
+                    <div>
+                        <span class="metric-label">Booked</span>
+                        <strong>{{ event.total_tickets }}</strong>
+                    </div>
+                    <div>
+                        <span class="metric-label">Remaining</span>
+                        <strong>{{ event.remaining_tickets_display }}</strong>
+                    </div>
+                </div>
+                <div class="actions event-actions">
+                    {% if not event.is_sold_out %}
+                        <a href="{{ url_for('events.book_event', event_id=event.id) }}">Book</a>
+                    {% else %}
+                        <span class="muted">Sold Out</span>
+                    {% endif %}
+                    {% if session.get('is_admin') %}
+                        <a href="{{ url_for('events.edit_event', event_id=event.id) }}">Edit</a>
+                        <form action="{{ url_for('events.delete_event', id=event.id) }}" method="POST" class="inline-form inline-form-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-danger">Delete</button>
+                        </form>
+                    {% endif %}
+                </div>
+            </article>
+        {% endfor %}
+    </section>
+{% else %}
+    <div class="card empty-state">
+        <p class="eyebrow">No active listings</p>
+        <h3>No events yet.</h3>
+        <p class="muted">Create the first event to start taking bookings, or remove the current filter to see the full list.</p>
     </div>
 {% endif %}
 
-<h2>All Events</h2>
-<div class="card">
-    <h3>Filter by Date</h3>
-    <form action="{{ url_for('home') }}" method="GET" class="row">
-        <input type="date" name="date_from" value="{{ filters.date_from | default('', true) }}" aria-label="From date">
-        <input type="date" name="date_to" value="{{ filters.date_to | default('', true) }}" aria-label="To date">
-        <input type="hidden" name="per_page" value="{{ per_page | default(10, true) }}">
-        <button type="submit">Apply Filter</button>
-    </form>
-    <div class="actions filter-actions">
-        <a href="{{ url_for('home') }}">Clear Filter</a>
-    </div>
-</div>
-{% for event in event_data | default([], true) %}
-    <div class="card">
-        <h3>{{ event.name }}</h3>
-        <p><strong>Date:</strong> {{ event.date | format_event_date }}</p>
-        <p><strong>Location:</strong> {{ event.location }}</p>
-        <p><strong>Capacity:</strong> {{ event.capacity }}</p>
-        <p class="muted">Total Tickets Booked: {{ event.total_tickets }}</p>
-        <p class="muted">Remaining Tickets: {{ event.remaining_tickets }}</p>
-        <div class="actions">
-            {% if event.remaining_tickets > 0 %}
-                <a href="{{ url_for('book_event', event_id=event.id) }}">Book</a>
-            {% else %}
-                <span class="muted">Sold Out</span>
-            {% endif %}
-            {% if session.get('is_admin') %}
-                <a href="{{ url_for('edit_event', event_id=event.id) }}">Edit</a>
-                <form action="{{ url_for('delete_event', id=event.id) }}" method="POST" class="inline-form inline-form-inline">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn-danger">Delete</button>
-                </form>
-            {% endif %}
-        </div>
-    </div>
-{% else %}
-    <p class="muted">No events yet.</p>
-{% endfor %}
-
 {% if total_pages > 1 %}
-    <div class="actions">
+    <div class="pagination-bar">
         {% if page > 1 %}
-            <a href="{{ url_for('home', date_from=filters.date_from, date_to=filters.date_to, per_page=per_page, page=page-1) }}">Prev</a>
+            <a href="{{ url_for('events.home', date_from=filters.date_from, date_to=filters.date_to, per_page=per_page, page=page-1) }}">Prev</a>
         {% endif %}
         <span class="muted">Page {{ page }} of {{ total_pages }}</span>
         {% if page < total_pages %}
-            <a href="{{ url_for('home', date_from=filters.date_from, date_to=filters.date_to, per_page=per_page, page=page+1) }}">Next</a>
+            <a href="{{ url_for('events.home', date_from=filters.date_from, date_to=filters.date_to, per_page=per_page, page=page+1) }}">Next</a>
         {% endif %}
     </div>
 {% endif %}

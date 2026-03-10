@@ -1,3 +1,10 @@
-.my-bookings-search-form {
-    margin-bottom: 0.85rem;
+.lookup-grid {
+    grid-template-columns: minmax(0, 1fr) 220px;
+    align-items: end;
+}
+
+@media (max-width: 640px) {
+    .lookup-grid {
+        grid-template-columns: 1fr;
+    }
 }

@@ -1,6 +1,6 @@
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
-from ..constants import MAX_TICKETS
+from ..constants import MAX_TICKETS, UNLIMITED_CAPACITY
 from ..parsers import parse_event_form, parse_home_event_filters
 from ..repositories.events_repo import (
     create_event,
@@ -156,14 +156,25 @@ def book_event(event_id):
         )
         return redirect(url_for("events.home"))
 
-    remaining_tickets = max(event[4] - event[5], 0)
+    if event[4] == UNLIMITED_CAPACITY:
+        remaining_tickets = None
+        capacity_display = "Unlimited"
+        remaining_tickets_display = "Unlimited"
+    else:
+        remaining_tickets = max(event[4] - event[5], 0)
+        capacity_display = event[4]
+        remaining_tickets_display = remaining_tickets
+
     return render_template(
         "book.html",
         event={
             "id": event[0],
             "name": event[1],
+            "capacity_display": capacity_display,
             "capacity": event[4],
             "total_tickets": event[5],
             "remaining_tickets": remaining_tickets,
+            "remaining_tickets_display": remaining_tickets_display,
         },
+        max_tickets=MAX_TICKETS,
     )

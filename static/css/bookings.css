@@ -1,21 +1,24 @@
-.bookings-search-form {
-    margin-bottom: 0.7rem;
+.bookings-filter-grid {
+    grid-template-columns: 1.5fr repeat(3, minmax(0, 1fr)) 0.9fr;
+    align-items: end;
+}
+
+.booking-record {
+    gap: 12px;
 }
 
 .resend-confirmation-form {
-    margin-bottom: 0.55rem;
+    margin: 0;
 }
 
-.bookings-search-form + p {
-    margin: 0.3rem 0 1rem;
+@media (max-width: 900px) {
+    .bookings-filter-grid {
+        grid-template-columns: 1fr 1fr;
+    }
 }
 
-.bookings-search-form + p a {
-    display: inline-block;
-    border: 1px solid rgba(14, 88, 81, 0.25);
-    border-radius: 0.72rem;
-    padding: 0.45rem 0.7rem;
-    text-decoration: none;
-    color: #0e5851;
-    font-weight: 650;
+@media (max-width: 640px) {
+    .bookings-filter-grid {
+        grid-template-columns: 1fr;
+    }
 }

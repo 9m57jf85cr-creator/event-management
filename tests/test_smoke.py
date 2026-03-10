@@ -56,6 +56,8 @@ class SmokeFlowTests(unittest.TestCase):
     def test_end_to_end_smoke_flow(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b'aria-current="page">Home</a>', response.data)
+        self.assertIn(b'hero-panel', response.data)
 
         response = self.client.get("/api/v1/health")
         self.assertEqual(response.status_code, 401)
@@ -105,6 +107,7 @@ class SmokeFlowTests(unittest.TestCase):
         response = self.client.get(f"/my_bookings?ref={reference_code}")
         self.assertEqual(response.status_code, 200)
         self.assertIn(reference_code.encode("utf-8"), response.data)
+        self.assertIn(b"<h1>My Bookings</h1>", response.data)
 
         token = self._csrf_from_path(f"/my_bookings?ref={reference_code}")
         response = self.client.post(
@@ -117,12 +120,14 @@ class SmokeFlowTests(unittest.TestCase):
 
         response = self.client.get("/bookings")
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b'aria-current="page">Bookings</a>', response.data)
         response = self.client.get("/bookings/export.csv")
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/csv", response.headers.get("Content-Type", ""))
 
         response = self.client.get("/booking_audit")
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b'aria-current="page">Audit</a>', response.data)
         response = self.client.get("/booking_audit/export.csv")
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/csv", response.headers.get("Content-Type", ""))
