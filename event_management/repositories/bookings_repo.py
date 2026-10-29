@@ -25,7 +25,19 @@ def fetch_my_bookings_by_reference(app, reference_code):
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT b.id, e.name, b.user_name, b.user_email, b.user_phone, b.tickets, b.created_at, b.reference_code
+        SELECT
+            b.id,
+            e.name,
+            b.user_name,
+            b.user_email,
+            b.user_phone,
+            b.payment_method,
+            b.payment_status,
+            b.payment_reference,
+            b.selected_add_ons,
+            b.tickets,
+            b.created_at,
+            b.reference_code
         FROM bookings b
         JOIN events e ON e.id = b.event_id
         WHERE b.reference_code = ?
@@ -79,8 +91,12 @@ def fetch_admin_bookings_page(app, query, status_filter, order_by_sql, page, per
             b.user_name,
             b.user_email,
             b.user_phone,
+            b.payment_method,
+            b.payment_status,
+            b.payment_reference,
             b.confirmation_email_status,
             b.confirmation_email_error,
+            b.selected_add_ons,
             b.tickets,
             b.created_at,
             b.reference_code
@@ -142,7 +158,19 @@ def fetch_bookings_for_csv(app, query, status_filter, order_by_sql):
     cursor = conn.cursor()
     cursor.execute(
         f"""
-        SELECT b.id, e.name, b.user_name, b.user_email, b.user_phone, b.tickets, b.created_at, b.reference_code
+        SELECT
+            b.id,
+            e.name,
+            b.user_name,
+            b.user_email,
+            b.user_phone,
+            b.payment_method,
+            b.payment_status,
+            b.payment_reference,
+            b.selected_add_ons,
+            b.tickets,
+            b.created_at,
+            b.reference_code
         FROM bookings b
         JOIN events e ON e.id = b.event_id
         {where_clause}

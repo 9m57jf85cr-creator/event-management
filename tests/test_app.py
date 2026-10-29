@@ -1,15 +1,19 @@
 import os
+import json
 import re
 import sqlite3
 import tempfile
 import unittest
 from contextlib import closing
+from datetime import date as date_cls, timedelta
 from unittest.mock import patch
 
 from app import app, init_db, load_runtime_config, reset_rate_limit_state
 
 
 class EventManagementAppTests(unittest.TestCase):
+    VALID_TEST_LOCATION = "Ludhiana, Punjab"
+
     def setUp(self):
         fd, self.db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
@@ -75,10 +79,16 @@ class EventManagementAppTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-    def _create_event(self, name="Tech Meetup", date="2026-03-01", location="Austin", capacity="100"):
+    def _create_event(self, name="Tech Meetup", date="2026-03-01", location=VALID_TEST_LOCATION, capacity="100"):
+        event_date = date
+        if event_date == "2026-03-01":
+            event_date = (date_cls.today() + timedelta(days=30)).isoformat()
+        normalized_location = location.lower()
+        if "india" not in normalized_location and "punjab" not in normalized_location:
+            location = self.VALID_TEST_LOCATION
         response = self._post_with_csrf(
             "/add_event",
-            {"name": name, "date": date, "location": location, "capacity": capacity},
+            {"name": name, "date": event_date, "location": location, "capacity": capacity},
             get_path="/",
             follow_redirects=True,
         )
@@ -87,7 +97,7 @@ class EventManagementAppTests(unittest.TestCase):
         with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 "SELECT id FROM events WHERE name = ? AND date = ? AND location = ?",
-                (name, date, location),
+                (name, event_date, location),
             ).fetchone()
 
         self.assertIsNotNone(row)
@@ -151,9 +161,15 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn(b"Restricted access", response.data)
 
     def test_add_event_success(self):
+        future_date = (date_cls.today() + timedelta(days=30)).isoformat()
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Hack Night", "date": "2026-03-02", "location": "Seattle", "capacity": "100"},
+            {
+                "name": "Hack Night",
+                "date": future_date,
+                "location": self.VALID_TEST_LOCATION,
+                "capacity": "100",
+            },
             get_path="/",
             follow_redirects=True,
         )
@@ -168,9 +184,10 @@ class EventManagementAppTests(unittest.TestCase):
 
     def test_protected_route_requires_admin(self):
         self._logout_admin()
+        future_date = (date_cls.today() + timedelta(days=30)).isoformat()
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Blocked", "date": "2026-03-02", "location": "Seattle", "capacity": "100"},
+            {"name": "Blocked", "date": future_date, "location": "Seattle", "capacity": "100"},
             get_path="/login",
             follow_redirects=True,
         )
@@ -289,9 +306,10 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn(b"Password is not displayed for security.", response.data)
 
     def test_add_event_validation_error(self):
+        future_date = (date_cls.today() + timedelta(days=30)).isoformat()
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "", "date": "2026-03-02", "location": "Seattle", "capacity": "100"},
+            {"name": "", "date": future_date, "location": self.VALID_TEST_LOCATION, "capacity": "100"},
             get_path="/",
             follow_redirects=True,
         )
@@ -300,9 +318,15 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn(b"Event name, date, and location are required.", response.data)
 
     def test_add_event_name_too_long(self):
+        future_date = (date_cls.today() + timedelta(days=30)).isoformat()
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "A" * 121, "date": "2026-03-02", "location": "Seattle", "capacity": "100"},
+            {
+                "name": "A" * 121,
+                "date": future_date,
+                "location": self.VALID_TEST_LOCATION,
+                "capacity": "100",
+            },
             get_path="/",
             follow_redirects=True,
         )
@@ -310,9 +334,15 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn(b"Event name cannot exceed 120 characters.", response.data)
 
     def test_add_event_invalid_control_characters(self):
+        future_date = (date_cls.today() + timedelta(days=30)).isoformat()
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Hack\x01Night", "date": "2026-03-02", "location": "Seattle", "capacity": "100"},
+            {
+                "name": "Hack\x01Night",
+                "date": future_date,
+                "location": self.VALID_TEST_LOCATION,
+                "capacity": "100",
+            },
             get_path="/",
             follow_redirects=True,
         )
@@ -322,7 +352,12 @@ class EventManagementAppTests(unittest.TestCase):
     def test_add_event_valid_date_format(self):
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Format Pass", "date": "2026-12-31", "location": "Denver", "capacity": "100"},
+            {
+                "name": "Format Pass Event",
+                "date": "2026-12-31",
+                "location": self.VALID_TEST_LOCATION,
+                "capacity": "100",
+            },
             get_path="/",
             follow_redirects=True,
         )
@@ -333,7 +368,12 @@ class EventManagementAppTests(unittest.TestCase):
     def test_add_event_invalid_date_format(self):
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Format Fail", "date": "31-12-2026", "location": "Denver", "capacity": "100"},
+            {
+                "name": "Format Fail Event",
+                "date": "31-12-2026",
+                "location": self.VALID_TEST_LOCATION,
+                "capacity": "100",
+            },
             get_path="/",
             follow_redirects=True,
         )
@@ -344,7 +384,32 @@ class EventManagementAppTests(unittest.TestCase):
         with closing(sqlite3.connect(self.db_path)) as conn:
             count = conn.execute(
                 "SELECT COUNT(*) FROM events WHERE name = ?",
-                ("Format Fail",),
+                ("Format Fail Event",),
+            ).fetchone()[0]
+
+        self.assertEqual(count, 0)
+
+    def test_add_event_rejects_past_date(self):
+        past_date = (date_cls.today() - timedelta(days=1)).isoformat()
+        response = self._post_with_csrf(
+            "/add_event",
+            {
+                "name": "Past Event",
+                "date": past_date,
+                "location": self.VALID_TEST_LOCATION,
+                "capacity": "100",
+            },
+            get_path="/",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Date must be today or a future date.", response.data)
+
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM events WHERE name = ?",
+                ("Past Event",),
             ).fetchone()[0]
 
         self.assertEqual(count, 0)
@@ -372,11 +437,21 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 405)
 
     def test_edit_event_success(self):
-        event_id = self._create_event(name="Old Name", date="2026-04-01", location="LA", capacity="120")
+        event_id = self._create_event(
+            name="Old Event",
+            date="2026-04-01",
+            location=self.VALID_TEST_LOCATION,
+            capacity="120",
+        )
 
         response = self._post_with_csrf(
             f"/edit_event/{event_id}",
-            {"name": "New Name", "date": "2026-04-20", "location": "SF", "capacity": "150"},
+            {
+                "name": "New Event",
+                "date": "2026-04-20",
+                "location": "Amritsar, Punjab",
+                "capacity": "150",
+            },
             get_path=f"/edit_event/{event_id}",
             follow_redirects=True,
         )
@@ -390,20 +465,81 @@ class EventManagementAppTests(unittest.TestCase):
                 (event_id,),
             ).fetchone()
 
-        self.assertEqual(row, ("New Name", "2026-04-20", "SF", 150))
+        self.assertEqual(row, ("New Event", "2026-04-20", "Amritsar, Punjab", 150))
 
     def test_edit_event_invalid_date(self):
-        event_id = self._create_event(name="Old Name", date="2026-04-01", location="LA")
+        event_id = self._create_event(name="Old Event", date="2026-04-01", location=self.VALID_TEST_LOCATION)
 
         response = self._post_with_csrf(
             f"/edit_event/{event_id}",
-            {"name": "New Name", "date": "20-04-2026", "location": "SF", "capacity": "100"},
+            {
+                "name": "New Event",
+                "date": "20-04-2026",
+                "location": "Amritsar, Punjab",
+                "capacity": "100",
+            },
             get_path=f"/edit_event/{event_id}",
             follow_redirects=True,
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Date must be in YYYY-MM-DD format.", response.data)
+
+    def test_edit_event_rejects_past_date(self):
+        future_date = (date_cls.today() + timedelta(days=10)).isoformat()
+        event_id = self._create_event(
+            name="Old Event",
+            date=future_date,
+            location=self.VALID_TEST_LOCATION,
+        )
+        past_date = (date_cls.today() - timedelta(days=1)).isoformat()
+
+        response = self._post_with_csrf(
+            f"/edit_event/{event_id}",
+            {
+                "name": "New Event",
+                "date": past_date,
+                "location": "Amritsar, Punjab",
+                "capacity": "100",
+            },
+            get_path=f"/edit_event/{event_id}",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Date must be today or a future date.", response.data)
+
+    def test_add_event_rejects_numeric_name(self):
+        response = self._post_with_csrf(
+            "/add_event",
+            {
+                "name": "12345",
+                "date": "2026-12-31",
+                "location": self.VALID_TEST_LOCATION,
+                "capacity": "100",
+            },
+            get_path="/",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Event name cannot be only numbers.", response.data)
+
+    def test_add_event_rejects_location_outside_india(self):
+        response = self._post_with_csrf(
+            "/add_event",
+            {
+                "name": "Tech Meetup",
+                "date": "2026-12-31",
+                "location": "Seattle",
+                "capacity": "100",
+            },
+            get_path="/",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Location must be within India.", response.data)
 
     def test_edit_event_not_found(self):
         response = self.client.get("/edit_event/99999", follow_redirects=True)
@@ -426,7 +562,15 @@ class EventManagementAppTests(unittest.TestCase):
         with closing(sqlite3.connect(self.db_path)) as conn:
             row = conn.execute(
                 """
-                SELECT user_name, tickets, reference_code, confirmation_email_status, confirmation_email_error
+                SELECT
+                    user_name,
+                    payment_method,
+                    payment_status,
+                    payment_reference,
+                    tickets,
+                    reference_code,
+                    confirmation_email_status,
+                    confirmation_email_error
                 FROM bookings
                 WHERE event_id = ?
                 """,
@@ -434,11 +578,105 @@ class EventManagementAppTests(unittest.TestCase):
             ).fetchone()
 
         self.assertEqual(row[0], "Sonam")
-        self.assertEqual(row[1], 3)
-        self.assertRegex(row[2], r"^[A-Z0-9]{10}$")
-        self.assertEqual(row[3], "skipped")
-        self.assertEqual(row[4], "SMTP is disabled.")
+        self.assertEqual(row[1], "offline")
+        self.assertEqual(row[2], "pending")
+        self.assertEqual(row[3], "")
+        self.assertEqual(row[4], 3)
+        self.assertRegex(row[5], r"^[A-Z0-9]{10}$")
+        self.assertEqual(row[6], "skipped")
+        self.assertEqual(row[7], "SMTP is disabled.")
         self.assertIn(b"Your reference code:", response.data)
+
+    def test_booking_flow_success_with_online_payment(self):
+        event_id = self._create_event()
+
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {
+                "name": "Sonam",
+                "tickets": "2",
+                "payment_method": "online",
+                "payment_reference": "UPI-REF-2026",
+            },
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Booking successful.", response.data)
+
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute(
+                """
+                SELECT payment_method, payment_status, payment_reference, tickets
+                FROM bookings
+                WHERE event_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (event_id,),
+            ).fetchone()
+
+        self.assertEqual(row, ("online", "paid", "UPI-REF-2026", 2))
+
+    def test_booking_flow_persists_selected_add_on_services(self):
+        event_id = self._create_event()
+
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {
+                "name": "Sonam",
+                "tickets": "1",
+                "add_on_services": ["meal_veg_non_veg", "projector_led_screen", "event_photographer"],
+            },
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Booking successful.", response.data)
+
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            selected_add_ons = conn.execute(
+                "SELECT selected_add_ons FROM bookings WHERE event_id = ? ORDER BY id DESC LIMIT 1",
+                (event_id,),
+            ).fetchone()[0]
+
+        self.assertEqual(
+            json.loads(selected_add_ons),
+            ["meal_veg_non_veg", "projector_led_screen", "event_photographer"],
+        )
+
+    def test_booking_flow_rejects_invalid_add_on_service(self):
+        event_id = self._create_event()
+
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {"name": "Sonam", "tickets": "1", "add_on_services": ["bad_service"]},
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Select only valid add-on services.", response.data)
+
+    def test_booking_online_payment_requires_transaction_reference(self):
+        event_id = self._create_event()
+
+        response = self._post_with_csrf(
+            f"/book/{event_id}",
+            {
+                "name": "Sonam",
+                "tickets": "1",
+                "payment_method": "online",
+                "payment_reference": "",
+            },
+            get_path=f"/book/{event_id}",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Transaction reference is required for online payment.", response.data)
 
     @patch("app.smtplib.SMTP")
     def test_booking_confirmation_email_sent_when_smtp_enabled(self, mock_smtp):
@@ -637,9 +875,15 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn(b"Sold Out", response.data)
 
     def test_add_event_blank_capacity_is_unlimited(self):
+        future_date = (date_cls.today() + timedelta(days=45)).isoformat()
         response = self._post_with_csrf(
             "/add_event",
-            {"name": "Unlimited Event", "date": "2026-05-01", "location": "Austin", "capacity": ""},
+            {
+                "name": "Unlimited Event",
+                "date": future_date,
+                "location": self.VALID_TEST_LOCATION,
+                "capacity": "",
+            },
             get_path="/",
             follow_redirects=True,
         )
@@ -696,10 +940,12 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertNotIn(b"10 March 2026", response.data)
 
     def test_home_page_filters_by_date_range(self):
-        self._create_event(name="March Event", date="2026-03-10", location="Austin", capacity="10")
-        self._create_event(name="April Event", date="2026-04-20", location="Austin", capacity="10")
+        march_event_date = (date_cls.today() + timedelta(days=5)).isoformat()
+        april_event_date = (date_cls.today() + timedelta(days=35)).isoformat()
+        self._create_event(name="March Event", date=march_event_date, location="Austin", capacity="10")
+        self._create_event(name="April Event", date=april_event_date, location="Austin", capacity="10")
 
-        response = self.client.get("/?date_from=2026-04-01&date_to=2026-04-30")
+        response = self.client.get(f"/?date_from={april_event_date}&date_to={april_event_date}")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"April Event", response.data)
         self.assertNotIn(b"March Event", response.data)
@@ -756,6 +1002,8 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(api_event["total_tickets"], 2)
         self.assertEqual(api_event["remaining_tickets"], 3)
         self.assertFalse(api_event["is_sold_out"])
+        self.assertIn("available_add_on_services", payload)
+        self.assertGreaterEqual(len(payload["available_add_on_services"]), 4)
 
     def test_api_events_filters_by_query_and_date_range(self):
         self._create_event(name="AI Summit", date="2026-10-01", location="San Francisco", capacity="10")
@@ -876,6 +1124,49 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertEqual(row[2], "+1 555 222 3333")
         self.assertEqual(row[3], 2)
 
+    def test_api_v1_bookings_create_success_with_add_on_services(self):
+        event_id = self._create_event(name="API Booking Event", date="2026-11-17", location="Seattle", capacity="4")
+        response = self.client.post(
+            "/api/v1/bookings",
+            headers=self._api_headers(),
+            json={
+                "event_id": event_id,
+                "name": "API Booker",
+                "email": "booker@example.com",
+                "phone": "+1 555 222 3333",
+                "tickets": 1,
+                "add_on_services": ["microphone_speakers", "stage_podium_setup"],
+            },
+        )
+        self.assertEqual(response.status_code, 201)
+
+        payload = response.get_json()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            selected_add_ons = conn.execute(
+                "SELECT selected_add_ons FROM bookings WHERE reference_code = ?",
+                (payload["reference_code"],),
+            ).fetchone()[0]
+
+        self.assertEqual(json.loads(selected_add_ons), ["microphone_speakers", "stage_podium_setup"])
+
+    def test_api_v1_bookings_invalid_add_on_services_returns_400(self):
+        event_id = self._create_event(name="API Invalid Addons", date="2026-11-18", location="Austin", capacity="4")
+        response = self.client.post(
+            "/api/v1/bookings",
+            headers=self._api_headers(),
+            json={
+                "event_id": event_id,
+                "name": "API User",
+                "email": "user@example.com",
+                "phone": "+1 555 222 3333",
+                "tickets": 1,
+                "add_on_services": ["not_real"],
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        self.assertEqual(payload["error"], "add_on_services contains an invalid service ID.")
+
     def test_api_v1_bookings_invalid_payload_returns_400(self):
         event_id = self._create_event(name="API Invalid Payload Event", date="2026-11-18", location="Austin", capacity="4")
         response = self.client.post(
@@ -981,7 +1272,7 @@ class EventManagementAppTests(unittest.TestCase):
         response = self.client.get("/my_bookings")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"My Bookings", response.data)
-        self.assertIn(b"Find Bookings", response.data)
+        self.assertIn(b"Find Your Booking Fast", response.data)
 
     def test_my_bookings_lookup_by_name(self):
         event_id = self._create_event(name="Community Meetup", date="2026-06-15", location="Boston")
@@ -1411,7 +1702,7 @@ class EventManagementAppTests(unittest.TestCase):
         self.assertIn("attachment; filename=bookings_report.csv", response.headers.get("Content-Disposition", ""))
         csv_text = response.data.decode("utf-8")
         self.assertIn(
-            "booking_id,event_name,user_name,user_email,user_phone,tickets,created_at,reference_code",
+            "booking_id,event_name,user_name,user_email,user_phone,payment_method,payment_status,payment_reference,selected_add_ons,tickets,created_at,reference_code",
             csv_text,
         )
         self.assertIn("Expo", csv_text)

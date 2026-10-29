@@ -5,10 +5,31 @@
 
 .booking-record {
     gap: 12px;
+    border: 1px solid rgba(30, 41, 59, 0.1);
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.95) 0%, rgba(247, 250, 252, 0.9) 100%);
+}
+
+.booking-record h3 {
+    line-height: 1.18;
+}
+
+.booking-record .eyebrow {
+    color: #1d4ed8;
+}
+
+.booking-record .badge {
+    margin-left: auto;
 }
 
 .resend-confirmation-form {
     margin: 0;
+}
+
+.search-panel {
+    border: 1px solid rgba(30, 58, 138, 0.12);
+    background:
+        radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.12), transparent 32%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.94) 0%, rgba(241, 245, 249, 0.9) 100%);
 }
 
 @media (max-width: 900px) {

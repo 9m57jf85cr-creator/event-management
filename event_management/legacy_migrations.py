@@ -115,3 +115,29 @@ def ensure_bookings_email_status_fields(cursor):
         cursor.execute(
             "ALTER TABLE bookings ADD COLUMN confirmation_email_error TEXT NOT NULL DEFAULT ''"
         )
+
+
+def ensure_bookings_payment_fields(cursor):
+    cursor.execute("PRAGMA table_info(bookings)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "payment_method" not in columns:
+        cursor.execute(
+            "ALTER TABLE bookings ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'offline'"
+        )
+    if "payment_status" not in columns:
+        cursor.execute(
+            "ALTER TABLE bookings ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'pending'"
+        )
+    if "payment_reference" not in columns:
+        cursor.execute(
+            "ALTER TABLE bookings ADD COLUMN payment_reference TEXT NOT NULL DEFAULT ''"
+        )
+
+
+def ensure_bookings_selected_add_ons_field(cursor):
+    cursor.execute("PRAGMA table_info(bookings)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "selected_add_ons" not in columns:
+        cursor.execute(
+            "ALTER TABLE bookings ADD COLUMN selected_add_ons TEXT NOT NULL DEFAULT '[]'"
+        )

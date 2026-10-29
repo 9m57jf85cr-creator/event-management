@@ -58,6 +58,14 @@
                     <p><strong>User:</strong> {{ booking.user_name }}</p>
                     <p><strong>Email:</strong> {{ booking.user_email }}</p>
                     <p><strong>Phone:</strong> {{ booking.user_phone }}</p>
+                    <p><strong>Payment Method:</strong> {{ booking.payment_method | title }}</p>
+                    <p><strong>Payment Status:</strong> {{ booking.payment_status | title }}</p>
+                    {% if booking.payment_reference %}
+                        <p><strong>Payment Reference:</strong> {{ booking.payment_reference }}</p>
+                    {% endif %}
+                    {% if booking.selected_add_ons %}
+                        <p><strong>Add-on Services:</strong> {{ booking.selected_add_ons | join(', ') }}</p>
+                    {% endif %}
                     <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
                     <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>
                     <div class="row action-stack">

@@ -1,6 +1,6 @@
-# Event Management (Flask)
+# College Event Management System (Flask)
 
-Simple event management app with event creation, capacity management, booking, and cancellation flows.
+Simple college event management app with event creation, capacity management, booking, and cancellation flows.
 Each booking now gets a unique reference code for self-service lookup and cancellation.
 Admin users can review cancellation history from the booking audit page.
 
@@ -234,6 +234,33 @@ source .venv/bin/activate
 python app.py
 ```
 
+## Live Demo (Examiner)
+
+Use this presentation flow so the app keeps running while you switch browser tabs/windows.
+
+Start demo server in background:
+
+```bash
+cd /Users/sonamchosket/Desktop/event-management
+source .venv/bin/activate
+make demo-bg
+```
+
+Check if it is running:
+
+```bash
+make demo-status
+```
+
+Open in browser:
+- `http://127.0.0.1:5001`
+
+Stop after the presentation:
+
+```bash
+make demo-stop
+```
+
 ## Database Migrations
 
 The project now supports versioned SQL migrations.
@@ -302,6 +329,9 @@ make lint
 make smoke
 make test
 make run
+make demo-bg
+make demo-status
+make demo-stop
 make migrate
 make backup
 make restore BACKUP_FILE=backups/events_YYYYMMDD_HHMMSS.db
@@ -346,6 +376,24 @@ Ensure you are running from the app folder:
 
 ```bash
 cd /Users/sonamchosket/Desktop/event-management
+```
+
+### `HTTP ERROR 403` on `127.0.0.1:5000`
+
+Cause: another local macOS service may be using port `5000`.
+
+Fix:
+
+```bash
+cd /Users/sonamchosket/Desktop/event-management
+source .venv/bin/activate
+make demo-bg
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5001
 ```
 
 ### Database reset (development only)

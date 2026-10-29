@@ -1,9 +1,18 @@
 .hero-panel {
+    position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.95fr);
+    grid-template-columns: minmax(0, 1.52fr) minmax(300px, 0.9fr);
     gap: 18px;
     align-items: stretch;
-    margin-bottom: 22px;
+    margin-bottom: 24px;
+}
+
+.hero-panel::after {
+    content: "";
+    position: absolute;
+    inset: -10px 6% auto 6%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.3), transparent);
 }
 
 .hero-copy {
@@ -13,8 +22,8 @@
 }
 
 .hero-text {
-    max-width: 62ch;
-    font-size: 1.04rem;
+    max-width: 64ch;
+    font-size: 1.03rem;
     color: var(--muted);
 }
 
@@ -30,39 +39,53 @@
 }
 
 .metric-card {
+    position: relative;
     padding: 16px 18px;
     border: 1px solid var(--line);
     border-radius: 20px;
-    background: rgba(255, 252, 247, 0.72);
+    background: rgba(255, 255, 255, 0.7);
     box-shadow: var(--shadow-md);
+    overflow: hidden;
+}
+
+.metric-card::after {
+    content: "";
+    position: absolute;
+    inset: auto -30% -60% auto;
+    width: 170px;
+    height: 170px;
+    background: radial-gradient(circle, rgba(37, 99, 235, 0.18), transparent 72%);
 }
 
 .metric-card strong {
+    position: relative;
+    z-index: 1;
     font-family: "Space Grotesk", sans-serif;
-    font-size: 1.35rem;
+    font-size: 1.4rem;
 }
 
 .spotlight-card {
     display: grid;
     align-content: end;
     gap: 10px;
+    border: 1px solid rgba(30, 58, 138, 0.2);
     background:
-        radial-gradient(circle at top right, rgba(21, 75, 69, 0.1), transparent 38%),
-        linear-gradient(180deg, rgba(26, 20, 15, 0.98) 0%, rgba(42, 31, 23, 0.96) 100%);
-    color: #f6efe4;
+        radial-gradient(circle at 100% 0%, rgba(56, 189, 248, 0.18), transparent 38%),
+        linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 58, 138, 0.95) 100%);
+    color: #e2e8f0;
 }
 
 .spotlight-card .muted,
 .spotlight-card .spotlight-label {
-    color: rgba(246, 239, 228, 0.72);
+    color: rgba(226, 232, 240, 0.8);
 }
 
 .spotlight-card h2 {
-    color: #fffaf3;
+    color: #f8fafc;
 }
 
 .spotlight-label {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.16em;
@@ -72,7 +95,12 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
-    margin-bottom: 26px;
+    margin-bottom: 28px;
+}
+
+.admin-panel,
+.filter-panel {
+    backdrop-filter: blur(10px);
 }
 
 .event-form-grid,
@@ -99,6 +127,12 @@
 .event-card {
     display: grid;
     gap: 16px;
+    transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+
+.event-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 26px 50px -38px rgba(15, 23, 42, 0.5);
 }
 
 .event-card-top {
@@ -113,8 +147,8 @@
     margin-bottom: 10px;
     padding: 0.42rem 0.7rem;
     border-radius: 999px;
-    color: var(--brand-strong);
-    background: rgba(182, 70, 26, 0.08);
+    color: #1e40af;
+    background: rgba(37, 99, 235, 0.12);
     font-size: 0.78rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -123,7 +157,7 @@
 
 .event-location {
     color: var(--muted);
-    font-size: 1rem;
+    font-size: 0.98rem;
 }
 
 .legacy-summary {
@@ -134,15 +168,15 @@
 .event-stats {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
     padding: 14px;
-    border-radius: 20px;
-    background: rgba(255, 255, 255, 0.58);
-    border: 1px solid rgba(52, 39, 21, 0.08);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.84) 0%, rgba(241, 245, 249, 0.82) 100%);
+    border: 1px solid rgba(148, 163, 184, 0.24);
 }
 
 .event-stats strong {
-    font-size: 1.06rem;
+    font-size: 1.08rem;
 }
 
 .event-actions {
@@ -150,8 +184,7 @@
 }
 
 .event-card-sold-out {
-    background:
-        linear-gradient(160deg, rgba(255, 249, 245, 0.96) 0%, rgba(245, 236, 228, 0.92) 100%);
+    background: linear-gradient(160deg, rgba(255, 247, 237, 0.96) 0%, rgba(254, 242, 242, 0.9) 100%);
 }
 
 .filter-actions {
@@ -162,13 +195,17 @@
     display: grid;
     gap: 8px;
     text-align: center;
-    padding-block: 28px;
+    padding-block: 30px;
 }
 
 @media (max-width: 940px) {
     .hero-panel,
     .control-grid {
         grid-template-columns: 1fr;
+    }
+
+    .hero-panel::after {
+        display: none;
     }
 }
 

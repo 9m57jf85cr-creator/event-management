@@ -1,3 +1,13 @@
 .edit-event-card {
     margin-top: 8px;
+    display: grid;
+    gap: 14px;
+    border: 1px solid rgba(30, 58, 138, 0.14);
+    background:
+        radial-gradient(circle at 90% -10%, rgba(37, 99, 235, 0.16), transparent 34%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.95) 0%, rgba(241, 245, 249, 0.9) 100%);
+}
+
+.edit-event-card h1 {
+    margin-bottom: 4px;
 }

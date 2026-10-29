@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#111827">
+    <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,7 +13,7 @@
     <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     {% block extra_head %}{% endblock %}
-    <title>{% block title %}Event Management{% endblock %}</title>
+    <title>{% block title %}College Event Management System{% endblock %}</title>
 </head>
 <body>
     <div class="page-backdrop page-backdrop-left"></div>
@@ -22,7 +22,7 @@
     <div class="container">
         <header class="site-header">
             <div class="brand-block">
-                <a href="{{ url_for('events.home') }}" class="brand-mark">EF</a>
+                <a href="{{ url_for('events.home') }}" class="brand-mark">CE</a>
                 <div>
                     <p class="eyebrow">Live operations dashboard</p>
                     <span class="app-brand">EventFlow</span>
@@ -30,6 +30,7 @@
             </div>
             <nav class="top-nav" aria-label="Primary">
                 <a href="{{ url_for('events.home') }}" {% if request.endpoint == 'events.home' %}aria-current="page"{% endif %}>Home</a>
+                <a href="{{ url_for('bookings.my_bookings') }}" {% if request.endpoint == 'bookings.my_bookings' %}aria-current="page"{% endif %}>My Bookings</a>
                 {% if session.get('is_admin') %}
                     <a href="{{ url_for('bookings.bookings') }}" {% if request.endpoint == 'bookings.bookings' %}aria-current="page"{% endif %}>Bookings</a>
                     <a href="{{ url_for('bookings.booking_audit') }}" {% if request.endpoint == 'bookings.booking_audit' %}aria-current="page"{% endif %}>Audit</a>
@@ -39,7 +40,6 @@
                         <button type="submit" class="btn-danger">Logout</button>
                     </form>
                 {% else %}
-                    <a href="{{ url_for('bookings.my_bookings') }}" {% if request.endpoint == 'bookings.my_bookings' %}aria-current="page"{% endif %}>My Bookings</a>
                     <a href="{{ url_for('auth.login') }}" {% if request.endpoint == 'auth.login' %}aria-current="page"{% endif %}>Admin Login</a>
                 {% endif %}
             </nav>

@@ -1,8 +1,10 @@
 import csv
 import io
+import json
 
 from flask import Blueprint, current_app, flash, make_response, redirect, render_template, request, url_for
 
+from ..constants import ADD_ON_SERVICE_LABELS
 from ..parsers import parse_booking_audit_filters, parse_booking_sort, parse_booking_status_filter
 from ..repositories.bookings_repo import (
     fetch_admin_bookings_page,
@@ -17,6 +19,61 @@ from ..validators import is_valid_reference_code
 bp = Blueprint("bookings", __name__)
 
 
+def _selected_add_on_labels(raw_selected_add_ons):
+    if not raw_selected_add_ons:
+        return []
+
+    try:
+        selected_ids = json.loads(raw_selected_add_ons)
+    except json.JSONDecodeError:
+        return []
+
+    if not isinstance(selected_ids, list):
+        return []
+
+    return [ADD_ON_SERVICE_LABELS[service_id] for service_id in selected_ids if service_id in ADD_ON_SERVICE_LABELS]
+
+
+def _selected_add_on_export_value(raw_selected_add_ons):
+    labels = _selected_add_on_labels(raw_selected_add_ons)
+    return ", ".join(labels)
+
+
+def serialize_booking_row(row, include_email_status=False):
+    """Convert booking query rows into a dictionary the templates can render directly."""
+    if include_email_status:
+        return {
+            "id": row[0],
+            "event_name": row[1],
+            "user_name": row[2],
+            "user_email": row[3],
+            "user_phone": row[4],
+            "payment_method": row[5],
+            "payment_status": row[6],
+            "payment_reference": row[7],
+            "selected_add_ons": _selected_add_on_labels(row[10]),
+            "confirmation_email_status": row[8],
+            "confirmation_email_error": row[9],
+            "tickets": row[11],
+            "created_at": row[12],
+            "reference_code": row[13],
+        }
+    return {
+        "id": row[0],
+        "event_name": row[1],
+        "user_name": row[2],
+        "user_email": row[3],
+        "user_phone": row[4],
+        "payment_method": row[5],
+        "payment_status": row[6],
+        "payment_reference": row[7],
+        "selected_add_ons": _selected_add_on_labels(row[8]),
+        "tickets": row[9],
+        "created_at": row[10],
+        "reference_code": row[11],
+    }
+
+
 @bp.route("/my_bookings")
 def my_bookings():
     reference_code = request.args.get("ref", "").strip().upper()
@@ -26,19 +83,7 @@ def my_bookings():
     if has_search:
         if is_valid_reference_code(reference_code):
             rows = fetch_my_bookings_by_reference(current_app, reference_code)
-            booking_data = [
-                {
-                    "id": row[0],
-                    "event_name": row[1],
-                    "user_name": row[2],
-                    "user_email": row[3],
-                    "user_phone": row[4],
-                    "tickets": row[5],
-                    "created_at": row[6],
-                    "reference_code": row[7],
-                }
-                for row in rows
-            ]
+            booking_data = [serialize_booking_row(row) for row in rows]
         else:
             has_search = False
             reference_code = ""
@@ -80,21 +125,7 @@ def bookings():
     booking_rows, page, total_pages = fetch_admin_bookings_page(
         current_app, query, status_filter, order_by_sql, page, per_page
     )
-    booking_data = [
-        {
-            "id": row[0],
-            "event_name": row[1],
-            "user_name": row[2],
-            "user_email": row[3],
-            "user_phone": row[4],
-            "confirmation_email_status": row[5],
-            "confirmation_email_error": row[6],
-            "tickets": row[7],
-            "created_at": row[8],
-            "reference_code": row[9],
-        }
-        for row in booking_rows
-    ]
+    booking_data = [serialize_booking_row(row, include_email_status=True) for row in booking_rows]
     return render_template(
         "bookings.html",
         booking_data=booking_data,
@@ -151,12 +182,34 @@ def export_bookings_csv():
             "user_name",
             "user_email",
             "user_phone",
+            "payment_method",
+            "payment_status",
+            "payment_reference",
+            "selected_add_ons",
             "tickets",
             "created_at",
             "reference_code",
         ]
     )
-    writer.writerows(rows)
+    writer.writerows(
+        [
+            [
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+                row[4],
+                row[5],
+                row[6],
+                row[7],
+                _selected_add_on_export_value(row[8]),
+                row[9],
+                row[10],
+                row[11],
+            ]
+            for row in rows
+        ]
+    )
 
     response = make_response(output.getvalue())
     response.headers["Content-Type"] = "text/csv; charset=utf-8"

@@ -1,10 +1,175 @@
+.lookup-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.9fr);
+    gap: 24px;
+    margin-bottom: 22px;
+    padding: 28px;
+    border: 1px solid rgba(37, 99, 235, 0.14);
+    background:
+        radial-gradient(circle at 12% 18%, rgba(37, 99, 235, 0.18), transparent 28%),
+        radial-gradient(circle at 86% 20%, rgba(15, 118, 110, 0.18), transparent 24%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.94) 0%, rgba(239, 246, 255, 0.92) 52%, rgba(236, 253, 245, 0.92) 100%);
+}
+
+.lookup-hero-copy {
+    display: grid;
+    gap: 14px;
+}
+
+.lookup-tips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.tip-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    padding: 0.55rem 0.9rem;
+    border: 1px solid rgba(37, 99, 235, 0.14);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.78);
+    color: #1e3a8a;
+    font-weight: 700;
+}
+
+.lookup-hero-side {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: 22px;
+    border-radius: 22px;
+    background: linear-gradient(145deg, rgba(15, 23, 42, 0.94) 0%, rgba(30, 58, 138, 0.92) 100%);
+    color: #eff6ff;
+    box-shadow: 0 24px 46px -34px rgba(15, 23, 42, 0.7);
+}
+
+.lookup-side-label {
+    color: rgba(191, 219, 254, 0.92);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.lookup-code-preview {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 0.75rem 0.95rem;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.1);
+    font-family: "Space Grotesk", "Outfit", sans-serif;
+    font-size: clamp(1.2rem, 2vw, 1.7rem);
+    letter-spacing: 0.08em;
+}
+
 .lookup-grid {
     grid-template-columns: minmax(0, 1fr) 220px;
     align-items: end;
+    gap: 14px;
+}
+
+.lookup-label {
+    display: block;
+    margin-bottom: 8px;
+    color: #1e3a8a;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.search-panel {
+    border: 1px solid rgba(15, 118, 110, 0.14);
+    background:
+        radial-gradient(circle at 8% 120%, rgba(15, 118, 110, 0.14), transparent 34%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 253, 250, 0.9) 100%);
+}
+
+.my-bookings-search-form input {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.my-bookings-search-form button {
+    min-height: 54px;
+}
+
+.record-card {
+    display: grid;
+    gap: 18px;
+    border: 1px solid rgba(30, 58, 138, 0.1);
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.95) 0%, rgba(247, 250, 252, 0.9) 100%);
+}
+
+.record-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.booking-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 18px;
+}
+
+.payment-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0.5rem 0.85rem;
+    border-radius: 999px;
+    font-weight: 700;
+}
+
+.payment-paid {
+    color: #065f46;
+    background: rgba(16, 185, 129, 0.14);
+    border: 1px solid rgba(16, 185, 129, 0.24);
+}
+
+.payment-pending {
+    color: #92400e;
+    background: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.24);
+}
+
+.payment-reference-box {
+    display: grid;
+    gap: 6px;
+    padding: 14px 16px;
+    border: 1px dashed rgba(37, 99, 235, 0.24);
+    border-radius: 16px;
+    background: rgba(239, 246, 255, 0.72);
+}
+
+.record-card .eyebrow {
+    color: #1e40af;
+}
+
+.record-card form {
+    margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+    .lookup-hero {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 640px) {
     .lookup-grid {
         grid-template-columns: 1fr;
+    }
+
+    .booking-meta-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .record-card-top {
+        flex-direction: column;
     }
 }

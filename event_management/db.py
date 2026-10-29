@@ -4,7 +4,9 @@ from .legacy_migrations import (
     ensure_bookings_contact_fields,
     ensure_bookings_created_at,
     ensure_bookings_email_status_fields,
+    ensure_bookings_payment_fields,
     ensure_bookings_reference_code,
+    ensure_bookings_selected_add_ons_field,
     ensure_events_capacity,
     generate_booking_reference,
     migrate_bookings_table,
@@ -50,6 +52,8 @@ def init_db(app):
     ensure_bookings_reference_code(cursor)
     ensure_bookings_contact_fields(cursor)
     ensure_bookings_email_status_fields(cursor)
+    ensure_bookings_payment_fields(cursor)
+    ensure_bookings_selected_add_ons_field(cursor)
     ensure_events_capacity(cursor)
     ensure_booking_audit_table(cursor)
     ensure_request_rate_limit_table(cursor)

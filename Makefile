@@ -1,12 +1,89 @@
 VENV_PY := .venv/bin/python
-PYTHON ?= $(if $(wildcard $(VENV_PY)),$(VENV_PY),python3)
+ALT_VENV_PY := venv/bin/python
+PYTHON ?= $(if $(wildcard $(VENV_PY)),$(VENV_PY),$(if $(wildcard $(ALT_VENV_PY)),$(ALT_VENV_PY),python3))
 GUNICORN_PID ?= .gunicorn.pid
 GUNICORN_LOG ?= .gunicorn.log
+DEMO_PID ?= .demo.pid
+DEMO_LOG ?= .demo.log
+DEMO_PORT ?= 5001
 
-.PHONY: run run-prod run-prod-daemon stop-prod status-prod logs-prod test smoke lint migrate backup restore compose-up compose-down compose-logs compose-migrate compose-smoke
+.PHONY: run demo demo-8000 demo-bg demo-stop demo-status run-prod run-prod-daemon stop-prod status-prod logs-prod test smoke lint migrate backup restore compose-up compose-down compose-logs compose-migrate compose-smoke
 
 run:
 	$(PYTHON) app.py
+
+demo:
+	@echo "Starting demo server on http://127.0.0.1:$(DEMO_PORT)"
+	@echo "Keep this terminal open. Press Ctrl+C to stop."
+	@FLASK_HOST=127.0.0.1 FLASK_PORT=$(DEMO_PORT) $(PYTHON) app.py
+
+demo-8000:
+	@echo "Starting demo server on http://127.0.0.1:8000"
+	@echo "Keep this terminal open. Press Ctrl+C to stop."
+	@FLASK_HOST=127.0.0.1 FLASK_PORT=8000 $(PYTHON) app.py
+
+demo-bg:
+	@set -e; \
+	existing_pid="$$(lsof -nP -iTCP:$(DEMO_PORT) -sTCP:LISTEN -t 2>/dev/null | head -n 1)"; \
+	if [ -n "$$existing_pid" ]; then \
+		echo "$$existing_pid" >"$(DEMO_PID)"; \
+		echo "Demo server already running at http://127.0.0.1:$(DEMO_PORT)"; \
+		echo "PID: $$existing_pid"; \
+		echo "Logs: $(DEMO_LOG)"; \
+		exit 0; \
+	fi; \
+	rm -f "$(DEMO_PID)"; \
+	nohup env FLASK_HOST=127.0.0.1 FLASK_PORT=$(DEMO_PORT) $(PYTHON) app.py >"$(DEMO_LOG)" 2>&1 & echo $$! >"$(DEMO_PID)"; \
+	for i in $$(seq 1 30); do \
+		if $(PYTHON) -c "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:$(DEMO_PORT)/', timeout=2).status == 200 else 1)" >/dev/null 2>&1; then \
+			pid="$$(cat "$(DEMO_PID)" 2>/dev/null)"; \
+			echo "Demo server is running at http://127.0.0.1:$(DEMO_PORT)"; \
+			echo "PID: $$pid"; \
+			echo "Logs: $(DEMO_LOG)"; \
+			exit 0; \
+		fi; \
+		sleep 1; \
+	done; \
+	echo "Demo server failed to start. Recent logs:"; \
+	tail -n 40 "$(DEMO_LOG)"; \
+	rm -f "$(DEMO_PID)"; \
+	exit 1
+
+demo-stop:
+	@set -e; \
+	pid=""; \
+	port_pid="$$(lsof -nP -iTCP:$(DEMO_PORT) -sTCP:LISTEN -t 2>/dev/null | head -n 1)"; \
+	if [ -n "$$port_pid" ]; then \
+		pid="$$port_pid"; \
+	elif [ ! -f "$(DEMO_PID)" ]; then \
+		echo "Demo server is not running (missing $(DEMO_PID))"; \
+		exit 0; \
+	fi; \
+	if [ -z "$$pid" ]; then \
+		pid="$$(cat "$(DEMO_PID)" 2>/dev/null)"; \
+	fi; \
+	if [ -z "$$pid" ]; then \
+		echo "Empty PID file found; removing $(DEMO_PID)"; \
+		rm -f "$(DEMO_PID)"; \
+		exit 0; \
+	fi; \
+	if ! kill -0 "$$pid" 2>/dev/null; then \
+		echo "Stale PID file found; removing $(DEMO_PID)"; \
+		rm -f "$(DEMO_PID)"; \
+		exit 0; \
+	fi; \
+	kill "$$pid"; \
+	rm -f "$(DEMO_PID)"; \
+	echo "Demo server stopped"
+
+demo-status:
+	@pid="$$(lsof -nP -iTCP:$(DEMO_PORT) -sTCP:LISTEN -t 2>/dev/null | head -n 1)"; \
+	if [ -n "$$pid" ]; then \
+		echo "$$pid" >"$(DEMO_PID)"; \
+		echo "Demo server running with PID $$pid at http://127.0.0.1:$(DEMO_PORT)"; \
+	else \
+		echo "Demo server is not running"; \
+	fi
 
 run-prod:
 	$(PYTHON) -m gunicorn -w 2 -b 0.0.0.0:8000 app:app

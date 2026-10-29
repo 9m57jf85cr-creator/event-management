@@ -3,6 +3,26 @@
     align-items: end;
 }
 
+.search-panel {
+    border: 1px solid rgba(30, 58, 138, 0.12);
+    background:
+        radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.16), transparent 30%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.95) 0%, rgba(239, 246, 255, 0.9) 100%);
+}
+
+.audit-record {
+    border: 1px solid rgba(30, 41, 59, 0.1);
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.95) 0%, rgba(247, 250, 252, 0.9) 100%);
+}
+
+.audit-record .eyebrow {
+    color: #1d4ed8;
+}
+
+.audit-record .status-chip {
+    align-self: start;
+}
+
 @media (max-width: 960px) {
     .audit-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));

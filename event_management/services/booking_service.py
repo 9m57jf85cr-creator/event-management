@@ -1,3 +1,7 @@
+"""Booking workflows shared by user-facing and admin routes."""
+
+import json
+
 from ..db import (
     generate_booking_reference,
     get_db_connection,
@@ -14,7 +18,20 @@ from ..repositories.bookings_repo import (
 from ..repositories.events_repo import fetch_capacity_totals_for_update
 
 
-def create_booking(app, event_id, name, email, phone, tickets, event_details):
+def create_booking(
+    app,
+    event_id,
+    name,
+    email,
+    phone,
+    tickets,
+    event_details,
+    payment_method="offline",
+    payment_status="pending",
+    payment_reference="",
+    selected_add_ons=None,
+):
+    """Create a booking, enforce capacity, and trigger confirmation email flow."""
     conn = get_db_connection(app)
     cursor = conn.cursor()
     cursor.execute("BEGIN IMMEDIATE")
@@ -46,20 +63,28 @@ def create_booking(app, event_id, name, email, phone, tickets, event_details):
             user_name,
             user_email,
             user_phone,
+            payment_method,
+            payment_status,
+            payment_reference,
             confirmation_email_status,
             confirmation_email_error,
+            selected_add_ons,
             tickets,
             reference_code
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             event_id,
             name,
             email,
             phone,
+            payment_method,
+            payment_status,
+            payment_reference,
             "pending",
             "",
+            json.dumps(selected_add_ons or []),
             tickets,
             generate_booking_reference(cursor),
         ),
@@ -89,10 +114,16 @@ def create_booking(app, event_id, name, email, phone, tickets, event_details):
     )
     update_booking_confirmation_email_status(app, booking_id, email_status, email_error)
 
-    return {"status": "success", "reference_code": booking_reference}
+    return {
+        "status": "success",
+        "reference_code": booking_reference,
+        "email_status": email_status,
+        "email_error": email_error,
+    }
 
 
 def cancel_booking_self_service(app, reference_code):
+    """Cancel a booking by reference code for self-service users."""
     conn = get_db_connection(app)
     cursor = conn.cursor()
     row = fetch_booking_for_self_cancel(cursor, reference_code)
@@ -122,6 +153,7 @@ def cancel_booking_self_service(app, reference_code):
 
 
 def cancel_booking_admin(app, booking_id):
+    """Cancel a booking from the admin dashboard."""
     conn = get_db_connection(app)
     cursor = conn.cursor()
     row = fetch_booking_for_admin_cancel(cursor, booking_id)
@@ -151,6 +183,7 @@ def cancel_booking_admin(app, booking_id):
 
 
 def resend_confirmation_email(app, booking_id):
+    """Retry the booking confirmation email for an existing booking."""
     row = fetch_booking_for_resend(app, booking_id)
     if row is None:
         return {"status": "not_found"}

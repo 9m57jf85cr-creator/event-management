@@ -1,6 +1,6 @@
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
-from ..constants import MAX_TICKETS, UNLIMITED_CAPACITY
+from ..constants import ADD_ON_SERVICE_GROUPS, MAX_TICKETS
 from ..parsers import parse_event_form, parse_home_event_filters
 from ..repositories.events_repo import (
     create_event,
@@ -11,15 +11,33 @@ from ..repositories.events_repo import (
 )
 from ..security import admin_required
 from ..services.booking_service import create_booking
-from ..services.event_service import list_event_summaries
+from ..services.event_service import build_event_summary, list_event_summaries
 from ..validators import (
     is_valid_booking_email,
     is_valid_booking_name,
-    is_valid_booking_phone,
+    validate_booking_phone_value,
+    validate_payment_details,
+    validate_add_on_service_selection,
     validate_event_fields,
 )
 
 bp = Blueprint("events", __name__)
+
+
+def build_booking_page_event(event_row):
+    """Convert the booking query row into the template structure used by book.html."""
+    summary = build_event_summary(event_row)
+    return {
+        "id": summary["id"],
+        "name": summary["name"],
+        "date": summary["date"],
+        "location": summary["location"],
+        "capacity_display": summary["capacity_display"],
+        "capacity": summary["capacity"],
+        "total_tickets": summary["total_tickets"],
+        "remaining_tickets": summary["remaining_tickets"],
+        "remaining_tickets_display": summary["remaining_tickets_display"],
+    }
 
 
 @bp.route("/")
@@ -104,6 +122,9 @@ def book_event(event_id):
         email = request.form.get("email", "").strip()
         phone = request.form.get("phone", "").strip()
         tickets_raw = request.form.get("tickets", "").strip()
+        payment_method_raw = request.form.get("payment_method", "offline").strip()
+        payment_reference_raw = request.form.get("payment_reference", "").strip()
+        selected_add_on_ids = request.form.getlist("add_on_services")
         event_name = event[1]
 
         if not is_valid_booking_name(name):
@@ -112,7 +133,20 @@ def book_event(event_id):
         if not is_valid_booking_email(email):
             return redirect(url_for("events.book_event", event_id=event_id))
 
-        if not is_valid_booking_phone(phone):
+        phone, phone_error = validate_booking_phone_value(phone)
+        if phone_error:
+            flash(phone_error, "error")
+            return redirect(url_for("events.book_event", event_id=event_id))
+
+        payment_valid, payment_method, payment_reference = validate_payment_details(
+            payment_method_raw,
+            payment_reference_raw,
+        )
+        if not payment_valid:
+            return redirect(url_for("events.book_event", event_id=event_id))
+
+        selected_add_ons = validate_add_on_service_selection(selected_add_on_ids)
+        if selected_add_ons is None:
             return redirect(url_for("events.book_event", event_id=event_id))
 
         try:
@@ -135,6 +169,10 @@ def book_event(event_id):
             phone=phone,
             tickets=tickets,
             event_details={"name": event_name, "date": event[2], "location": event[3]},
+            payment_method=payment_method,
+            payment_status="paid" if payment_method == "online" else "pending",
+            payment_reference=payment_reference,
+            selected_add_ons=selected_add_ons,
         )
 
         if booking_result["status"] == "event_not_found":
@@ -150,31 +188,21 @@ def book_event(event_id):
             )
             return redirect(url_for("events.book_event", event_id=event_id))
 
-        flash(
-            f"Booking successful. Your reference code: {booking_result['reference_code']}",
-            "success",
-        )
-        return redirect(url_for("events.home"))
+        success_message = f"Booking successful. Your reference code: {booking_result['reference_code']}"
+        email_status = booking_result.get("email_status")
+        if email_status == "sent":
+            success_message += " Confirmation email sent."
+        elif email_status == "failed":
+            success_message += " Booking saved, but the confirmation email could not be sent."
+        elif email_status == "skipped":
+            success_message += " Booking saved. Confirmation email is disabled right now."
 
-    if event[4] == UNLIMITED_CAPACITY:
-        remaining_tickets = None
-        capacity_display = "Unlimited"
-        remaining_tickets_display = "Unlimited"
-    else:
-        remaining_tickets = max(event[4] - event[5], 0)
-        capacity_display = event[4]
-        remaining_tickets_display = remaining_tickets
+        flash(success_message, "success")
+        return redirect(url_for("events.home"))
 
     return render_template(
         "book.html",
-        event={
-            "id": event[0],
-            "name": event[1],
-            "capacity_display": capacity_display,
-            "capacity": event[4],
-            "total_tickets": event[5],
-            "remaining_tickets": remaining_tickets,
-            "remaining_tickets_display": remaining_tickets_display,
-        },
+        event=build_booking_page_event(event),
+        add_on_service_groups=ADD_ON_SERVICE_GROUPS,
         max_tickets=MAX_TICKETS,
     )

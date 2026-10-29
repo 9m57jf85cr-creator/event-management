@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Event Management{% endblock %}
+{% block title %}College Event Management System{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">{% endblock %}
 
 {% block content %}
 <section class="hero-panel">
     <div class="hero-copy">
         <p class="eyebrow">Event control center</p>
-        <h1>Event Management System</h1>
+        <h1>College Event Management System</h1>
         <p class="hero-text">Plan launches, track bookings, and keep every event page feeling live, intentional, and easy to operate.</p>
         <div class="hero-meta">
             <div class="metric-card">
@@ -35,13 +35,12 @@
     {% if session.get('is_admin') %}
         <div class="card admin-panel">
             <div class="section-heading">
-                <p class="eyebrow">Publish</p>
                 <h2>Add Event</h2>
             </div>
             <form action="{{ url_for('events.add_event') }}" method="POST" class="row event-form-grid">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="text" name="name" placeholder="Event Name" required>
-                <input type="date" name="date" required>
+                <input type="date" name="date" min="{{ today_iso() }}" required>
                 <input type="text" name="location" placeholder="Location" required>
                 <input type="number" name="capacity" placeholder="Capacity (leave blank for unlimited)" min="1" max="5000">
                 <button type="submit">Add Event</button>
@@ -51,7 +50,6 @@
 
     <div class="card filter-panel">
         <div class="section-heading">
-            <p class="eyebrow">Refine</p>
             <h2>Filter Events</h2>
         </div>
         <form action="{{ url_for('events.home') }}" method="GET" class="row filter-grid">

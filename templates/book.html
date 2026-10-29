@@ -12,6 +12,14 @@
     <div class="card book-card">
         <div class="detail-strip">
             <div>
+                <span class="metric-label">Date</span>
+                <strong>{{ event.date }}</strong>
+            </div>
+            <div>
+                <span class="metric-label">Location</span>
+                <strong>{{ event.location }}</strong>
+            </div>
+            <div>
                 <span class="metric-label">Capacity</span>
                 <strong>{{ event.capacity_display }}</strong>
             </div>
@@ -28,6 +36,33 @@
             <input class="book-input" type="email" name="email" placeholder="Your Email" required>
             <input class="book-input" type="tel" name="phone" placeholder="Your Phone Number" required>
             <input class="book-input" type="number" name="tickets" placeholder="Number of Tickets" min="1" max="{{ max_tickets if event.remaining_tickets is none else event.remaining_tickets }}" required>
+            <select class="book-input" name="payment_method" required>
+                <option value="offline">Pay Offline</option>
+                <option value="online">Pay Online</option>
+            </select>
+            <input class="book-input" type="text" name="payment_reference" placeholder="Online transaction / UPI reference (required for online payment)">
+            <section class="add-on-panel">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Optional Services</p>
+                        <h2>Add-on Services</h2>
+                    </div>
+                </div>
+                <p class="muted">Choose any extra services you want us to arrange for this event booking.</p>
+                <div class="add-on-group-grid">
+                    {% for group in add_on_service_groups %}
+                        <fieldset class="add-on-group">
+                            <legend>{{ group.title }}</legend>
+                            {% for option in group.options %}
+                                <label class="add-on-option">
+                                    <input type="checkbox" name="add_on_services" value="{{ option.id }}">
+                                    <span>{{ option.label }}</span>
+                                </label>
+                            {% endfor %}
+                        </fieldset>
+                    {% endfor %}
+                </div>
+            </section>
             <button type="submit">Confirm Booking</button>
         </form>
         {% else %}

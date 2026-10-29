@@ -5,15 +5,29 @@
 
 {% block content %}
 <section class="page-shell">
-    <div class="page-header">
-        <p class="eyebrow">Self service</p>
-        <h1>My Bookings</h1>
-        <p class="muted">Use the unique reference code shown after a successful booking.</p>
-    </div>
+    <section class="lookup-hero card">
+        <div class="lookup-hero-copy">
+            <p class="eyebrow">Reference Search</p>
+            <h1>Find Your Booking Fast</h1>
+            <p class="muted">Paste the reference code you received after booking to view your tickets, payment details, and cancellation option.</p>
+            <div class="lookup-tips">
+                <span class="tip-pill">10-character code</span>
+                <span class="tip-pill">Instant lookup</span>
+                <span class="tip-pill">Self-service cancel</span>
+            </div>
+        </div>
+        <div class="lookup-hero-side">
+            <p class="lookup-side-label">Example Reference</p>
+            <strong class="lookup-code-preview">{{ reference_code if reference_code else "POU6EXBI8X" }}</strong>
+            <p class="muted">Use the exact code from your booking success message or confirmation email.</p>
+        </div>
+    </section>
+
     <div class="card search-panel">
         <form action="{{ url_for('bookings.my_bookings') }}" method="GET" class="row lookup-grid my-bookings-search-form">
-            <input type="text" name="ref" value="{{ reference_code | default('', true) }}" placeholder="Enter your booking reference code" required>
-            <button type="submit">Find Bookings</button>
+            <label class="lookup-label" for="reference-code">Booking Reference Code</label>
+            <input id="reference-code" type="text" name="ref" value="{{ reference_code | default('', true) }}" placeholder="Enter your booking reference code" required>
+            <button type="submit">Find Booking</button>
         </form>
     </div>
 
@@ -21,13 +35,33 @@
         <div class="record-grid">
             {% for booking in booking_data | default([], true) %}
                 <div class="card record-card">
-                    <p class="eyebrow">Reference {{ booking.reference_code }}</p>
-                    <h3>{{ booking.event_name }}</h3>
-                    <p><strong>Name:</strong> {{ booking.user_name }}</p>
-                    <p><strong>Email:</strong> {{ booking.user_email }}</p>
-                    <p><strong>Phone:</strong> {{ booking.user_phone }}</p>
-                    <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
-                    <p class="muted"><strong>Booked At:</strong> {{ booking.created_at }}</p>
+                    <div class="record-card-top">
+                        <div>
+                            <p class="eyebrow">Reference {{ booking.reference_code }}</p>
+                            <h3>{{ booking.event_name }}</h3>
+                        </div>
+                        <span class="payment-badge payment-{{ booking.payment_status }}">{{ booking.payment_status | title }}</span>
+                    </div>
+                    <div class="booking-meta-grid">
+                        <p><strong>Name:</strong> {{ booking.user_name }}</p>
+                        <p><strong>Email:</strong> {{ booking.user_email }}</p>
+                        <p><strong>Phone:</strong> {{ booking.user_phone }}</p>
+                        <p><strong>Tickets:</strong> {{ booking.tickets }}</p>
+                        <p><strong>Payment Method:</strong> {{ booking.payment_method | title }}</p>
+                        <p><strong>Booked At:</strong> {{ booking.created_at }}</p>
+                    </div>
+                    {% if booking.selected_add_ons %}
+                        <div class="payment-reference-box">
+                            <span class="metric-label">Add-on Services</span>
+                            <strong>{{ booking.selected_add_ons | join(', ') }}</strong>
+                        </div>
+                    {% endif %}
+                    {% if booking.payment_reference %}
+                        <div class="payment-reference-box">
+                            <span class="metric-label">Payment Reference</span>
+                            <strong>{{ booking.payment_reference }}</strong>
+                        </div>
+                    {% endif %}
                     <form action="{{ url_for('bookings.cancel_my_booking', reference_code=booking.reference_code) }}" method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn-danger">Cancel My Booking</button>

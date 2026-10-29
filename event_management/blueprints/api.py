@@ -2,11 +2,12 @@ import re
 
 from flask import Blueprint, current_app, jsonify, request
 
-from ..constants import MAX_BOOKING_EMAIL_LENGTH, MAX_BOOKING_NAME_LENGTH, MAX_BOOKING_PHONE_LENGTH, MAX_TICKETS
+from ..constants import ADD_ON_SERVICE_GROUPS, MAX_BOOKING_EMAIL_LENGTH, MAX_BOOKING_NAME_LENGTH, MAX_BOOKING_PHONE_LENGTH, MAX_TICKETS
 from ..parsers import parse_events_api_filters
 from ..repositories.events_repo import fetch_event_with_totals
 from ..services.booking_service import create_booking
 from ..services.event_service import list_event_summaries
+from ..validators import validate_add_on_service_selection, validate_booking_phone_value
 
 bp = Blueprint("api", __name__)
 
@@ -23,6 +24,7 @@ def _events_api_response():
     return jsonify(
         {
             "items": listing["items"],
+            "available_add_on_services": ADD_ON_SERVICE_GROUPS,
             "page": listing["page"],
             "per_page": listing["per_page"],
             "total_items": listing["total_items"],
@@ -83,23 +85,33 @@ def _validate_booking_payload(payload):
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         return None, "email must be a valid email address."
 
-    if not phone:
-        return None, "phone is required."
-    if len(phone) > MAX_BOOKING_PHONE_LENGTH:
-        return None, f"phone cannot exceed {MAX_BOOKING_PHONE_LENGTH} characters."
-    if any(ord(ch) < 32 for ch in phone):
-        return None, "phone contains invalid characters."
-    if not re.fullmatch(r"[0-9+\-\s()]+", phone):
+    normalized_phone, phone_error = validate_booking_phone_value(phone)
+    if phone_error:
+        if phone_error == "Phone number is required.":
+            return None, "phone is required."
+        if phone_error.startswith("Phone number cannot exceed"):
+            return None, f"phone cannot exceed {MAX_BOOKING_PHONE_LENGTH} characters."
+        if phone_error == "Phone number contains invalid characters.":
+            return None, "phone contains invalid characters."
         return None, "phone must be a valid phone number."
-    if sum(ch.isdigit() for ch in phone) < 7:
-        return None, "phone must be a valid phone number."
+
+    raw_add_ons = payload.get("add_on_services", [])
+    if raw_add_ons is None:
+        raw_add_ons = []
+    if not isinstance(raw_add_ons, list):
+        return None, "add_on_services must be an array of service IDs."
+
+    selected_add_ons = validate_add_on_service_selection([str(item) for item in raw_add_ons])
+    if selected_add_ons is None:
+        return None, "add_on_services contains an invalid service ID."
 
     return {
         "event_id": event_id,
         "name": name,
         "email": email,
-        "phone": phone,
+        "phone": normalized_phone,
         "tickets": tickets,
+        "selected_add_ons": selected_add_ons,
     }, None
 
 
@@ -122,6 +134,7 @@ def api_create_booking():
         phone=data["phone"],
         tickets=data["tickets"],
         event_details={"name": event[1], "date": event[2], "location": event[3]},
+        selected_add_ons=data["selected_add_ons"],
     )
 
     if booking_result["status"] == "event_not_found":

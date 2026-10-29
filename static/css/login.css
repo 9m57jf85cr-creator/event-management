@@ -1,7 +1,39 @@
 .login-card {
     margin-top: 8px;
+    display: grid;
+    gap: 14px;
+    padding: 26px;
+    border: 1px solid rgba(37, 99, 235, 0.14);
+    background:
+        radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.14), transparent 34%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 245, 249, 0.9) 100%);
+}
+
+.login-card h1 {
+    margin-bottom: 2px;
+}
+
+.login-card p {
+    margin: 0;
+}
+
+.login-card p strong {
+    color: #1e3a8a;
 }
 
 .login-input {
     margin: 0;
+}
+
+.login-card label {
+    color: #1f2937;
+}
+
+#toggle-password {
+    justify-self: start;
+    margin-top: 2px;
+}
+
+.login-card button[type="submit"] {
+    margin-top: 4px;
 }

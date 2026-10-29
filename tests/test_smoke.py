@@ -72,7 +72,7 @@ class SmokeFlowTests(unittest.TestCase):
             data={
                 "name": "Smoke Test Event",
                 "date": "2026-12-01",
-                "location": "Test Hall",
+                "location": "Mohali, Punjab",
                 "capacity": "50",
                 "csrf_token": token,
             },
@@ -107,7 +107,7 @@ class SmokeFlowTests(unittest.TestCase):
         response = self.client.get(f"/my_bookings?ref={reference_code}")
         self.assertEqual(response.status_code, 200)
         self.assertIn(reference_code.encode("utf-8"), response.data)
-        self.assertIn(b"<h1>My Bookings</h1>", response.data)
+        self.assertIn(b"Find Your Booking Fast", response.data)
 
         token = self._csrf_from_path(f"/my_bookings?ref={reference_code}")
         response = self.client.post(

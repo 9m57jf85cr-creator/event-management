@@ -1,4 +1,5 @@
 import os
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -96,6 +97,7 @@ class BookingServiceTests(unittest.TestCase):
             phone="+1 555 123 0000",
             tickets=2,
             event_details={"name": "Service Event", "date": "2026-12-01", "location": "Austin"},
+            selected_add_ons=["meal_veg_non_veg", "projector_led_screen"],
         )
 
         self.assertEqual(result["status"], "success")
@@ -103,7 +105,11 @@ class BookingServiceTests(unittest.TestCase):
 
         with closing(sqlite3.connect(self.db_path)) as conn:
             booking = conn.execute(
-                "SELECT user_name, tickets, confirmation_email_status FROM bookings WHERE reference_code = ?",
+                """
+                SELECT user_name, tickets, payment_method, payment_status, payment_reference, confirmation_email_status, selected_add_ons
+                FROM bookings
+                WHERE reference_code = ?
+                """,
                 (result["reference_code"],),
             ).fetchone()
             audit = conn.execute(
@@ -112,8 +118,40 @@ class BookingServiceTests(unittest.TestCase):
 
         self.assertEqual(booking[0], "Alex")
         self.assertEqual(booking[1], 2)
-        self.assertEqual(booking[2], "sent")
+        self.assertEqual(booking[2], "offline")
+        self.assertEqual(booking[3], "pending")
+        self.assertEqual(booking[4], "")
+        self.assertEqual(booking[5], "sent")
+        self.assertEqual(json.loads(booking[6]), ["meal_veg_non_veg", "projector_led_screen"])
         self.assertEqual(audit, ("create", "self_service"))
+
+    @patch("event_management.services.booking_service.send_booking_confirmation_email")
+    def test_create_booking_online_payment_success(self, mock_send_confirmation):
+        mock_send_confirmation.return_value = ("sent", "")
+        event_id = self._create_event(capacity=5)
+
+        result = create_booking(
+            app=app,
+            event_id=event_id,
+            name="Alex",
+            email="alex@example.com",
+            phone="+1 555 123 0000",
+            tickets=1,
+            event_details={"name": "Service Event", "date": "2026-12-01", "location": "Austin"},
+            payment_method="online",
+            payment_status="paid",
+            payment_reference="UPI-12345",
+        )
+
+        self.assertEqual(result["status"], "success")
+
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            booking = conn.execute(
+                "SELECT payment_method, payment_status, payment_reference FROM bookings WHERE reference_code = ?",
+                (result["reference_code"],),
+            ).fetchone()
+
+        self.assertEqual(booking, ("online", "paid", "UPI-12345"))
 
     def test_create_booking_event_not_found(self):
         result = create_booking(

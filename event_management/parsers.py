@@ -146,6 +146,7 @@ def parse_events_api_filters():
 
 
 def parse_home_event_filters():
+    location = request.args.get("location", "").strip()
     date_from = request.args.get("date_from", "").strip()
     date_to = request.args.get("date_to", "").strip()
     page = request.args.get("page", default=1, type=int)
@@ -163,6 +164,7 @@ def parse_home_event_filters():
             except ValueError:
                 flash("Date filters must be in YYYY-MM-DD format.", "error")
                 return {
+                    "location": location,
                     "date_from": "",
                     "date_to": "",
                     "page": page,
@@ -173,6 +175,9 @@ def parse_home_event_filters():
 
     where_parts = []
     params = []
+    if location:
+        where_parts.append("LOWER(e.location) LIKE LOWER(?)")
+        params.append(f"%{location}%")
     if date_from:
         where_parts.append("e.date >= ?")
         params.append(date_from)
@@ -185,6 +190,7 @@ def parse_home_event_filters():
         where_clause = "WHERE " + " AND ".join(where_parts)
 
     return {
+        "location": location,
         "date_from": date_from,
         "date_to": date_to,
         "page": page,
